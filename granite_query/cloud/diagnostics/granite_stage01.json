@@ -1,0 +1,37 @@
+{
+  "study": "granite-4.2-3b-dose-lr-stage01",
+  "backend": "plan",
+  "launch_modal": false,
+  "launch_deepseek": false,
+  "allow_official_test": false,
+  "include_published_reference": true,
+  "model": "ibm-granite/granite-4.2-3b",
+  "revision": "4e9c275e232f10211ec88644d106a1f6a1b60e06",
+  "lora": {"r": 8, "alpha": 16, "dropout": 0.0, "target_modules": ["q_proj", "v_proj"]},
+  "optimizer": {
+    "name": "AdamW",
+    "betas": [0.9, 0.999],
+    "eps": 1e-8,
+    "weight_decay": 0.01,
+    "max_grad_norm": 1.0,
+    "schedule": "constant"
+  },
+  "learning_rates": [2e-5, 1e-4],
+  "updates": [64, 256],
+  "tokens_per_update": 1024,
+  "train_seeds": [42, 43, 44],
+  "data_seed": 42,
+  "checkpoint_every_updates": 64,
+  "stage0_repeats": 3,
+  "historical_dev_questions": 200,
+  "recommended_dev_questions": 1000,
+  "pilot_questions": 200,
+  "target_effect": 0.02,
+  "eval_questions_for_sweep": 200,
+  "decoding": {
+    "enable_thinking": false,
+    "do_sample": false,
+    "max_new_tokens": 512,
+    "evaluation_batch_size": 8
+  }
+}
