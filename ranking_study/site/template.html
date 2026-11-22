@@ -1,252 +1,225 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Granite Query: Ranking Training Data as Retrieval</title>
-<link rel="icon" href="./favicon.svg?v=20261111-1" type="image/svg+xml">
-<link rel="icon" href="./favicon.ico?v=20261111-1" sizes="any">
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="CS 410 final project. Can classic search methods find the right training data for a task? Seven rankers, three controlled pools, and the shortcut that fooled two of them.">
+<meta name="theme-color" content="#100b15">
+<title>Granite Query · Ranking Training Data as Retrieval</title>
+<link rel="stylesheet" href="site/site.css?v=20261104-1"><link rel="stylesheet" href="site/home.css?v=20261104-2">
+<link rel="icon" href="./favicon.ico?v=20261111-1" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/svg+xml" sizes="any" href="./favicon.svg?v=20261111-1">
 <style>
-:root {
-  color-scheme: light;
-  --bg: #f6f5f2; --surface: #fcfcfb; --border: #e4e2dc;
-  --text: #0b0b0b; --text-2: #52514e; --muted: #8a8984; --grid: #ecebe6;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
-  --seq-lo: #cde2fb; --seq-hi: #104281; --neutral-bar: #b9b7b0;
-  --chip: #eeede8; --good: #1baf7a; --code-bg: #f0efea;
-}
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
-    color-scheme: dark;
-    --bg: #121211; --surface: #1a1a19; --border: #2e2e2c;
-    --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e88; --grid: #2a2a28;
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70;
-    --seq-lo: #1c2a3d; --seq-hi: #86b6ef; --neutral-bar: #5b5a56;
-    --chip: #262624; --code-bg: #222220;
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #121211; --surface: #1a1a19; --border: #2e2e2c;
-  --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e88; --grid: #2a2a28;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70;
-  --seq-lo: #1c2a3d; --seq-hi: #86b6ef; --neutral-bar: #5b5a56;
-  --chip: #262624; --code-bg: #222220;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text);
-  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-main { max-width: 980px; margin: 0 auto; padding: 32px 20px 80px; }
-header.hero { padding: 40px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
-.eyebrow { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
-h1 { font-size: 40px; line-height: 1.15; margin: 8px 0 12px; letter-spacing: -0.01em; }
-h2 { font-size: 26px; margin: 48px 0 8px; letter-spacing: -0.005em; }
-h3 { font-size: 18px; margin: 24px 0 8px; }
-p, li { color: var(--text-2); max-width: 72ch; }
-strong { color: var(--text); }
-a { color: var(--s1); }
-.lede { font-size: 19px; color: var(--text-2); max-width: 64ch; }
-.meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: var(--muted); margin-top: 16px; }
-.meta a { color: var(--text-2); }
-nav.toc { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
-nav.toc a { font-size: 14px; padding: 6px 12px; border-radius: 999px; background: var(--chip); color: var(--text-2); text-decoration: none; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 24px 0; }
-.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
-.tile .num { font-size: 32px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
-.tile .lab { font-size: 14px; color: var(--text-2); }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin: 16px 0; }
-.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.card-title { font-weight: 600; color: var(--text); }
-.card-sub { font-size: 14px; color: var(--muted); }
-.controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0 4px; }
-.seg { display: inline-flex; background: var(--chip); border-radius: 999px; padding: 3px; }
-.seg button { border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
-.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
-.linkbtn { border: 0; background: none; color: var(--s1); font: inherit; font-size: 13px; cursor: pointer; padding: 4px 0; }
-.multiples { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 20px; }
-.mult-title { font-size: 14px; color: var(--text); font-weight: 600; margin-bottom: 4px; }
-.mult-sub { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
-svg text { font-family: inherit; pointer-events: none; }
-.axis text, .lbl { fill: var(--muted); font-size: 12px; }
-.vlbl { fill: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
-.mlbl { fill: var(--text-2); font-size: 12.5px; }
-.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--text); border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.14); opacity: 0; transition: opacity .1s; z-index: 10; max-width: 280px; }
-.tip .t { font-weight: 600; margin-bottom: 2px; }
-.tip .r { color: var(--text-2); font-variant-numeric: tabular-nums; }
-table.data { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 12px; font-variant-numeric: tabular-nums; }
-table.data th, table.data td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text-2); }
-table.data th:first-child, table.data td:first-child { text-align: left; }
-table.data th { color: var(--text); font-weight: 600; }
-.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); margin: 6px 0; }
-.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; background: var(--c); vertical-align: -1px; }
-.callout { border-left: 3px solid var(--s1); padding: 4px 0 4px 16px; margin: 16px 0; }
-.callout p { margin: 4px 0; }
-.pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; counter-reset: step; }
-.pipeline div { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; font-size: 14px; color: var(--text-2); }
-.pipeline div::before { counter-increment: step; content: counter(step); display: block; font-weight: 650; color: var(--s1); font-size: 13px; margin-bottom: 4px; }
-.pipeline b { color: var(--text); display: block; }
-.search { display: flex; gap: 8px; margin: 12px 0; }
-.search textarea { flex: 1; min-height: 64px; resize: vertical; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 15px; background: var(--bg); color: var(--text); }
-.search button { border: 0; border-radius: 10px; padding: 0 18px; background: var(--s1); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.chips button { border: 1px solid var(--border); background: var(--bg); color: var(--text-2); border-radius: 999px; font: inherit; font-size: 12.5px; padding: 4px 10px; cursor: pointer; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.result { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: start; }
-.result .rank { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; }
-.result .txt { font-size: 14px; color: var(--text-2); white-space: pre-wrap; }
-.badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.badge.rel { background: color-mix(in srgb, var(--s3) 20%, transparent); color: var(--text); }
-.badge.non { background: var(--chip); color: var(--text-2); }
-.score { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; display: block; text-align: right; margin-top: 4px; }
-.summary-line { font-size: 14px; color: var(--text); margin: 8px 0; }
-pre { background: var(--code-bg); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13.5px; color: var(--text); }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.fp { border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 14px; }
-.fp .q { color: var(--text); }
-.fp .h { color: var(--text-2); margin-top: 2px; }
-.fp .h::before { content: "Retrieved: "; color: var(--muted); }
-.fp .q::before { content: "Query: "; color: var(--muted); }
-.themebtn { position: fixed; top: 14px; right: 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; z-index: 5; }
-footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 14px; color: var(--muted); }
-@media (max-width: 600px) { h1 { font-size: 30px; } }
+/* Additions for this page. Everything else comes from the site's shared component styles. */
+.rs-brand{display:flex;align-items:center;gap:12px;font-size:14px;letter-spacing:-.2px;color:var(--night-ink);white-space:nowrap}
+.rs-brand img{width:26px;height:26px}
+.rs-brand small{font-family:var(--mono);font-size:10px;color:#a88fab;letter-spacing:.04em;text-transform:uppercase}
+.rs-brand:hover{text-decoration:none}
+.opening-actions{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+.opening-actions .text-link{color:#ebbadf;font-size:13px}
+.rs-spec{background:var(--surface)}
+.rs-spec .research-spec strong{font-size:26px;letter-spacing:-.8px}
+.rs-spec .research-spec small{font-size:11px;color:var(--muted);line-height:1.6}
+.rs-steps{border-top:1px solid var(--line);margin:0;padding:0}
+.rs-steps>li{list-style:none;display:grid;grid-template-columns:155px 1fr 1.1fr;gap:30px;padding:27px 0;border-bottom:1px solid var(--line)}
+.rs-steps>li>span:first-child{font-family:var(--mono);font-size:9px;letter-spacing:.04em;color:var(--accent);text-transform:uppercase;padding-top:6px}
+.rs-steps strong{font-size:20px;line-height:1.4;font-weight:400;letter-spacing:-.55px}
+.rs-steps p{font-size:13px;color:var(--muted);line-height:1.85;margin:0}
+.rs-steps p b{color:var(--ink);font-weight:400}
+.rs-steps .is-turn strong{color:var(--accent)}
+.rs-pad{padding:28px 27px}
+.rs-table{display:none;padding:0 27px 26px}
+.rs-table.is-open{display:block}
+.rs-inspect-metrics{display:grid;grid-template-columns:1fr 1fr;gap:0 18px;margin:18px 0 6px;border-top:1px solid #ffffff18}
+.rs-inspect-metrics div{padding:12px 0;border-bottom:1px solid #ffffff13}
+.rs-inspect-metrics span{display:block;font-size:8px;color:#a3809d;font-family:var(--mono);margin-bottom:5px}
+.rs-inspect-metrics b{font-weight:400;font-size:18px;letter-spacing:-.4px}
+.rs-inspect-metrics i{font-style:normal;font-size:10px;color:#a98ca8;margin-left:4px}
+.row-track>span.is-best{background:#9b286e}
+.result-row .row-value{font-size:15px}
+.rs-grid2{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--line)}
+.rs-grid2>div{padding:26px 27px;border-right:1px solid var(--line)}
+.rs-grid2>div:last-child{border-right:0}
+.rs-sub{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:0 0 6px}
+.rs-cap{font-size:12px;color:var(--muted);line-height:1.8;margin:14px 0 0}
+svg text{font-family:Arial,Helvetica,sans-serif;pointer-events:none}
+.rs-tip{position:fixed;pointer-events:none;z-index:50;background:#211627;color:#eee0ef;padding:10px 12px;font-size:11px;line-height:1.6;opacity:0;transition:opacity .1s;max-width:260px;box-shadow:0 10px 30px #0003}
+.rs-tip b{display:block;font-weight:400;color:#fbd4ef;margin-bottom:2px}
+.rs-legend{display:flex;gap:22px;font-size:11px;color:var(--muted);margin:0 0 10px}
+.rs-legend span:before{content:"";display:inline-block;width:14px;height:3px;margin-right:7px;vertical-align:3px;background:var(--c)}
+.rs-fp{display:grid;grid-template-columns:1fr 1fr;gap:30px;padding:22px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.75}
+.rs-fp span{display:block;font-family:var(--mono);font-size:8px;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);margin-bottom:6px}
+.rs-fp .hit{color:var(--muted)}
+.rs-search{display:flex;gap:0;border:1px solid var(--line);margin:0 0 14px}
+.rs-search textarea{flex:1;border:0;padding:14px 16px;min-height:74px;resize:vertical;background:var(--surface);color:var(--ink);font-size:14px;line-height:1.6}
+.rs-search textarea:focus{outline:none}
+.rs-search button{border:0;background:var(--ink);color:var(--surface);padding:0 26px;font-size:12px}
+.rs-search button:hover{background:var(--accent)}
+.rs-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.rs-chips button{border:1px solid var(--line);background:transparent;color:var(--muted);font-size:11px;padding:7px 11px;max-width:290px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rs-chips button:hover{border-color:var(--accent);color:var(--accent)}
+.rs-demo-head{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:6px}
+.rs-score{font-size:22px;letter-spacing:-.6px}
+.rs-score small{font-size:11px;color:var(--muted);letter-spacing:0;margin-left:6px}
+.rs-hit{display:grid;grid-template-columns:30px 1fr 86px;gap:14px;padding:13px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.65;align-items:start}
+.rs-hit>span:first-child{font-family:var(--mono);font-size:11px;color:var(--muted);padding-top:2px}
+.rs-hit .src{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.04em;text-align:right;padding-top:3px}
+.rs-hit .src.rel{color:var(--accent)}
+.rs-hit .src.non{color:#a1909e}
+.rs-hit .src small{display:block;color:#a1909e;text-transform:none;letter-spacing:0;margin-top:3px}
+.rs-hit.non .txt{color:var(--muted)}
+.closing-section pre{background:#1d1422;color:#f1d9ec;border:1px solid #ffffff17;padding:22px 24px;font-family:var(--mono);font-size:12px;line-height:1.9;overflow-x:auto;margin:0 0 28px;max-width:760px}
+.closing-section .page-width>div.rs-close-actions{display:flex;gap:28px;align-items:center;flex-wrap:wrap}
+.closing-section .text-link{color:#f1bbdf}
+.rs-footer{display:flex;justify-content:space-between;gap:30px;padding-block:34px 40px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.rs-footer nav{display:flex;gap:26px}
+.interpretation-band .before-after{font-size:64px}
+.method-detail ul{grid-column:2/-1;margin:0;padding-left:18px;font-size:12px;color:var(--muted);line-height:1.85}
+@media(max-width:850px){.rs-steps>li{grid-template-columns:1fr 1.4fr}.rs-steps>li>span:first-child{grid-column:1/-1}.rs-grid2{grid-template-columns:1fr}.rs-grid2>div{border-right:0;border-bottom:1px solid var(--line)}}
+@media(max-width:650px){.rs-brand small{display:none}.rs-steps>li{display:block}.rs-steps strong{display:block;margin:8px 0 10px}.rs-fp{grid-template-columns:1fr;gap:10px}.rs-hit{grid-template-columns:24px 1fr}.rs-hit .src{grid-column:2;text-align:left}.interpretation-band .before-after{font-size:48px}}
 </style>
-</head>
-<body>
-<button class="themebtn" id="themebtn" type="button">Toggle theme</button>
-<main>
-<header class="hero">
-  <div class="eyebrow">CS 410 Text Information Systems · Final Project · Fall 2026</div>
-  <h1>Granite Query</h1>
-  <p class="lede">Before you fine tune a model like IBM Granite, you have to decide which examples are worth training on. This project treats that decision as a search problem and measures how well classic retrieval methods can find the examples that match a target task.</p>
-  <div class="meta">
-    <span>Avinash Sri-kumeran (aus4)</span>
-    <a href="https://github.com/AviSrikumeran/granitequery">Source code on GitHub</a>
-    <span>Data: GSM8K and Alpaca</span>
-  </div>
-  <nav class="toc">
-    <a href="#problem">Problem</a><a href="#setup">Setup</a><a href="#results">Results</a>
-    <a href="#length">Length shortcut</a><a href="#tuning">BM25 tuning</a><a href="#scale">Pool size</a>
-    <a href="#errors">Errors</a><a href="#demo">Live demo</a><a href="#run">Run it</a>
+</head><body class="home-page">
+<a class="skip-link" href="#main">Skip to the project</a>
+<header class="site-nav">
+  <a class="rs-brand" href="./"><img src="./favicon.svg?v=20261111-1" alt=""><span>Ranking Study <small>CS 410</small></span></a>
+  <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="main-nav">Menu <span aria-hidden="true">+</span></button>
+  <nav id="main-nav" aria-label="Main navigation">
+    <a href="#solution">Solution</a><a href="#findings">Results</a><a href="#shortcut">The shortcut</a><a href="#method">Method</a><a href="#demo">Live demo</a><a href="#run">Run it</a>
+    <a class="nav-repository" href="https://github.com/AviSrikumeran/granitequery">GitHub ↗</a>
   </nav>
 </header>
+<main id="main">
 
-<div class="tiles" id="tiles"></div>
-
-<section id="problem">
-<h2>The problem</h2>
-<p>Training data pools are large and mixed. If the goal is to make a model better at math word problems, most of a general instruction pool like Alpaca is irrelevant to that goal. Training on everything wastes compute, and training on a random slice wastes it too.</p>
-<p>A ranker that puts task relevant examples at the top lets you train on a small, focused subset. This project started as a full fine tuning study on Granite. Fine tuning runs on Modal got worse after each round of ranking and retraining, and there was no GPU cluster access, so the project narrowed to one question that can be answered cleanly with CS 410 tools:</p>
-<div class="callout"><p><strong>Given a math word problem as a query, how well can a ranker pull math word problems to the top of a mixed training pool?</strong></p></div>
-</section>
-
-<section id="setup">
-<h2>Experimental setup</h2>
-<div class="pipeline">
-  <div><b>Build the pool</b>5,000 Alpaca instructions, 500 GSM8K training problems, and 100 near duplicate copies.</div>
-  <div><b>Label relevance</b>Any GSM8K item is relevant. Alpaca items are not.</div>
-  <div><b>Query</b>300 GSM8K test questions. None has an exact or near duplicate in the training set.</div>
-  <div><b>Rank</b>Seven rankers score every pool item for every query.</div>
-  <div><b>Score</b>P@10, MRR, nDCG@10, and Recall@100, averaged over 3 seeds.</div>
-</div>
-<h3>Rankers compared</h3>
-<ul>
-  <li><strong>Random</strong> and <strong>Length only</strong> (longest items first, ignores the query) as sanity baselines.</li>
-  <li><strong>TF IDF</strong> with cosine similarity, and <strong>TF IDF + Rocchio feedback</strong>, which treats the top 10 results as relevant and moves the query toward their centroid (α = 1, β = 0.75).</li>
-  <li><strong>LSA</strong>: TF IDF projected to 200 dimensions with truncated SVD.</li>
-  <li><strong>BM25</strong> (k1 = 1.5, b = 0.75), with and without English stop words.</li>
-</ul>
-<h3>Three pools</h3>
-<ul>
-  <li><strong>Standard</strong>: the pool described above.</li>
-  <li><strong>Deduplicated</strong>: the standard pool after MinHash LSH deduplication (word 3 gram shingles, Jaccard threshold 0.8).</li>
-  <li><strong>Length matched</strong>: 1,800 Alpaca items sampled so their word counts follow the GSM8K distribution, plus 180 GSM8K problems and 36 near duplicates. This pool exists because of the finding in the <a href="#length">length shortcut</a> section.</li>
-</ul>
-</section>
-
-<section id="results">
-<h2>Results</h2>
-<p>Each bar is the mean over 3 seeds. Hover a bar for its standard deviation, or open the table.</p>
-<div class="card">
-  <div class="card-head"><div class="card-title">Ranker quality by pool</div><div class="card-sub">Higher is better</div></div>
-  <div class="controls">
-    <div class="seg" id="metricSeg"></div>
-    <button class="linkbtn" id="mainTableBtn" type="button">Show table</button>
+<section class="opening" aria-labelledby="hero-title"><div class="opening-inner page-width">
+  <div class="opening-copy">
+    <p class="eyebrow">CS 410 Text Information Systems · Final project</p>
+    <h1 id="hero-title">Can search find the<br><em>right data</em> to train on?</h1>
+    <p>Seven ranking methods, three controlled data pools, 900 scored queries per method, and one shortcut that fooled two of them.</p>
+    <div class="opening-actions"><a class="action action-light" href="#findings">See the results <span aria-hidden="true">↗</span></a><a class="text-link" href="#demo">Try the search ↓</a></div>
   </div>
-  <div class="multiples" id="mainCharts"></div>
-  <div id="mainTable" hidden></div>
-</div>
-<p id="mainTakeaway"></p>
-<h3>Deduplication</h3>
-<p id="dedupText"></p>
-</section>
+  <div id="hero-material" class="opening-art"><div class="hero-fallback" aria-hidden="true"><span></span><span></span><span></span></div></div>
+</div><a class="opening-scroll page-width" href="#answer">The short answer <span aria-hidden="true">↓</span></a></section>
 
-<section id="length">
-<h2>The length shortcut</h2>
-<p>On the standard pool, a ranker that ignores the query and simply returns the longest items gets a P@10 near 0.47, about four times random. GSM8K problems have a median of about 42 words, while the median Alpaca item has 11. Any method that rewards long documents gets credit for finding math without understanding anything about math.</p>
-<p>That inflates two results on the standard pool. LSA looks like the best method, and BM25 with no length normalization (b = 0) reaches a P@10 above 0.97 in the single seed sweep. Both effects mostly disappear once Alpaca items are matched to GSM8K in length. On the length matched pool, the length baseline falls below random, BM25 becomes the best ranker on P@10, nDCG@10, and Recall@100 (LSA keeps a slightly higher MRR), and b = 0.75 is the best length normalization again.</p>
-<div class="callout"><p><strong>Lesson:</strong> when relevance labels come from which dataset an item belongs to, check whether a trivial feature like length separates the datasets before trusting a ranking result.</p></div>
-</section>
+<section class="rs-spec"><div class="page-width"><div class="research-spec" id="spec"></div></div></section>
 
-<section id="tuning">
-<h2>BM25 parameter sweep</h2>
-<p>P@10 for 25 combinations of k1 and b on one seed. Stronger blue means higher P@10. Compare the two pools: the bright b = 0 column on the standard pool comes from the length shortcut.</p>
-<div class="card">
-  <div class="card-head"><div class="card-title">BM25 P@10 by k1 and b</div><button class="linkbtn" id="sweepTableBtn" type="button">Show table</button></div>
-  <div class="multiples" id="sweepCharts"></div>
-  <div id="sweepTable" hidden></div>
-</div>
-</section>
-
-<section id="scale">
-<h2>Pool size</h2>
-<p>Keeping 500 GSM8K problems and 100 near duplicates fixed while adding more Alpaca noise (one seed, 300 queries per size). As relevant items become a smaller share of the pool, precision drops for every ranker, but BM25 stays well above random.</p>
-<div class="card">
-  <div class="card-head"><div class="card-title">P@10 as the pool grows</div><button class="linkbtn" id="scaleTableBtn" type="button">Show table</button></div>
-  <div class="legend" id="scaleLegend"></div>
-  <div id="scaleChart"></div>
-  <div id="scaleTable" hidden></div>
-</div>
-</section>
-
-<section id="errors">
-<h2>Error analysis</h2>
-<p id="errStats"></p>
-<p>The highest scoring mistakes share a pattern. The query and the retrieved item share a rare topic word, like jeans, Celsius, or bus, but the retrieved item is not a math problem. Word overlap captures topic and misses task type. Removing stop words makes this worse, because words such as "how", "many", and "each" are the strongest signal that a text is a word problem.</p>
-<div class="card" id="fpList"></div>
-</section>
-
-<section id="demo">
-<h2>Live demo</h2>
-<p>Search a 3,360 item pool (3,000 Alpaca, 300 GSM8K, 60 near duplicates) with BM25 running in your browser. Type a math word problem or pick an example. Green badges mark GSM8K items.</p>
-<div class="card">
-  <div class="chips" id="exampleChips"></div>
-  <div class="search">
-    <textarea id="q" placeholder="A baker makes 24 muffins and sells them in boxes of 4. How many boxes does she fill?"></textarea>
-    <button id="go" type="button">Search</button>
+<section class="latest page-width" id="answer" aria-labelledby="answer-title">
+  <div><p class="eyebrow">The question and the answer</p><h2 id="answer-title">BM25 finds it.<br>Length nearly faked it.</h2></div>
+  <div class="latest-copy">
+    <p>Before fine tuning a model like IBM Granite on math, you have to pick which training examples to use. This project treats that choice as a search problem. A math word problem is the query, and a good ranker should pull other math word problems to the top of a mixed pool.</p>
+    <p id="answerText"></p>
+    <p class="finding-limit">This measures retrieval quality, not whether a model trained on the ranked data improves. That is the next step.</p>
+    <a class="text-link" href="#solution">How the problem was solved ↓</a>
   </div>
-  <div class="controls">
-    <div class="seg" id="stopSeg">
-      <button type="button" aria-pressed="true" data-stop="0">Keep stop words</button>
-      <button type="button" aria-pressed="false" data-stop="1">Remove stop words</button>
+</section>
+
+<section class="section page-width" id="solution" aria-labelledby="solution-title">
+  <div class="section-heading"><div><p class="eyebrow">The full solution</p><h2 id="solution-title">From a failing plan<br>to a clean result.</h2></div>
+  <p>The project changed course twice. Each step below is what was done and why, in order.</p></div>
+  <ol class="rs-steps">
+    <li><span>Step 1 · Starting point</span><strong>The original plan stalled.</strong><p>The first version ranked DeepSeek reasoning traces and fine tuned Granite on the top ranked data using Modal. Accuracy got worse after each round of ranking and retraining, and there was <b>no GPU cluster access</b> to scale it up.</p></li>
+    <li><span>Step 2 · Reframe</span><strong>Measure the ranking step on its own.</strong><p>The part that could be measured exactly was the ranker itself. So the question became an information retrieval problem: given a GSM8K math question, <b>can a ranker put GSM8K problems at the top of a pool full of unrelated Alpaca instructions?</b> Relevance is known for every item, so P@10, MRR, nDCG@10 and Recall@100 can be computed exactly.</p></li>
+    <li><span>Step 3 · Build the test</span><strong>Seven rankers, three seeds, 300 queries each.</strong><p>Random, length only, TF IDF, TF IDF with Rocchio feedback, LSA, BM25, and BM25 without stop words. Each seed draws a new pool of 5,600 items and 300 new test questions. MinHash deduplication runs on a second copy of each pool, with 100 planted near duplicates to see how many it catches.</p></li>
+    <li class="is-turn"><span>Step 4 · The catch</span><strong>A ranker that ignores the query scored 0.47.</strong><p>Returning the longest items first, without reading the query, got P@10 0.47, about four times random. GSM8K problems are about four times longer than Alpaca items (median 42 words against 11). <b>That shortcut inflated LSA and BM25 without length normalization</b>, so the first leaderboard could not be trusted.</p></li>
+    <li class="is-turn"><span>Step 5 · The fix</span><strong>A length matched pool removes the shortcut.</strong><p>A third pool samples Alpaca items so their word counts follow the GSM8K distribution exactly. On that pool the length baseline falls below random (0.03), LSA drops from 0.89 to 0.66, and <b>BM25 comes out on top at 0.71</b> with the smallest spread across seeds of any real ranker.</p></li>
+    <li><span>Step 6 · Verification</span><strong>Checked like a grader would.</strong><p>No GSM8K test question has an exact or near duplicate in the training set, so queries never leak into the pool. BM25 matches the reference rank_bm25 package to within 1e−12. 16 unit tests cover every ranker and metric, and a fresh clone reproduces every number on this page exactly.</p></li>
+  </ol>
+</section>
+
+<section class="section page-width" id="findings" aria-labelledby="findings-title" style="padding-top:0">
+  <div class="section-heading"><div><p class="eyebrow">Results · mean of 3 seeds</p><h2 id="findings-title">Who ranks best<br>depends on the pool.</h2></div>
+  <p>Pick a pool and a metric. Select any ranker to see all four scores and how it compares with random. The length matched pool is the fair comparison.</p></div>
+  <div class="result-workspace">
+    <div class="workspace-topline"><span>Evidence · results/results.json · 300 queries × 3 seeds</span><button class="quiet-button" type="button" id="tableBtn">Show table +</button></div>
+    <div class="study-tabs" role="group" aria-label="Pool" id="poolTabs"></div>
+    <div class="workspace-heading">
+      <div><p class="eyebrow" id="poolEyebrow"></p><h3 id="poolTitle"></h3><p id="poolDesc"></p></div>
+      <div class="result-tools"><div class="segmented" role="group" aria-label="Metric" id="metricSeg"></div></div>
+    </div>
+    <div class="rs-table" id="mainTable"></div>
+    <div class="result-body">
+      <div class="result-main">
+        <div class="chart-heading"><span id="chartHeading"></span><span>Higher is better</span></div>
+        <div class="result-chart" id="rows"></div>
+        <p class="chart-instruction">Select a ranker for details. The magenta bar is the best ranker on this metric in this pool.</p>
+      </div>
+      <aside class="evidence-inspector" aria-live="polite">
+        <div class="inspector-topline"><span>Selected ranker</span><span id="inspPool"></span></div>
+        <h4 id="inspName"></h4><p id="inspDesc"></p>
+        <div class="evidence-score"><strong id="inspScore"></strong><span id="inspScoreLab"></span></div>
+        <div class="paired-comparison"><p>Compared with random order</p><strong id="inspLift"></strong><span id="inspLiftNote"></span></div>
+        <div class="rs-inspect-metrics" id="inspMetrics"></div>
+      </aside>
     </div>
   </div>
-  <div class="summary-line" id="demoSummary"></div>
-  <div id="demoResults"></div>
-</div>
 </section>
 
-<section id="limitations">
-<h2>Limitations and next steps</h2>
-<ul>
-  <li>Relevance is defined by source dataset. A real math question inside Alpaca counts as not relevant, so precision is slightly underestimated.</li>
-  <li>The evaluation measures retrieval quality, not whether a model trained on the ranked subset gets better. Connecting the two by fine tuning Granite on ranked versus random subsets is the original goal and the next step.</li>
-  <li>All methods are lexical or linear. A neural embedding ranker is a natural comparison once length is controlled.</li>
-</ul>
+<section class="interpretation-band" id="shortcut" aria-labelledby="shortcut-title"><div class="interpretation-inner page-width">
+  <div><p class="eyebrow">The shortcut</p><h2 id="shortcut-title">Length was doing<br>the <em>work.</em></h2>
+  <p>GSM8K problems are long and most Alpaca instructions are short, so any method that rewards long documents gets credit for finding math without understanding anything about math. Matching lengths removes that free credit.</p>
+  <p>The lesson for any data selection project: when relevance comes from which dataset an item belongs to, check whether a trivial feature already separates the datasets.</p></div>
+  <div class="transfer-comparison" id="beforeAfter"></div>
+</div></section>
+
+<section class="section page-width" id="method" aria-labelledby="method-title">
+  <div class="section-heading"><div><p class="eyebrow">Method</p><h2 id="method-title">Four stages,<br>all on a laptop.</h2></div>
+  <p>The whole pipeline runs on a CPU in under a minute. Select a stage for the details.</p></div>
+  <div class="method-workspace">
+    <div class="method-map" id="methodMap"><span class="method-wire" aria-hidden="true"></span></div>
+    <div class="method-detail" id="methodDetail"></div>
+  </div>
+  <div class="method-notes">
+    <p><strong>Rankers.</strong> BM25 uses k1 = 1.5 and b = 0.75 and is written from scratch on sparse matrices. Rocchio uses α = 1 and β = 0.75 over the top 10. LSA keeps 200 SVD dimensions.</p>
+    <p><strong>Metrics.</strong> Binary relevance. nDCG uses log2 discounts with the ideal DCG from the true number of relevant items. Recall@100 has a ceiling because each pool holds more than 100 relevant items.</p>
+    <p><strong>Data.</strong> GSM8K (MIT license) and Stanford Alpaca (CC BY NC 4.0), downloaded at run time. Near duplicates are GSM8K problems with the first number increased by 1.</p>
+  </div>
 </section>
 
-<section id="run">
-<h2>Run it yourself</h2>
-<p>Everything runs on a laptop CPU in about a minute. No GPU or API key is needed.</p>
+<section class="section page-width" id="tuning" aria-labelledby="tuning-title" style="padding-top:0">
+  <div class="section-heading"><div><p class="eyebrow">Deeper checks</p><h2 id="tuning-title">Tuning and scale.</h2></div>
+  <p>A sweep over BM25's two parameters shows the same shortcut from another angle, and growing the pool shows how precision holds up as noise increases. Both use one seed.</p></div>
+  <div class="result-workspace">
+    <div class="workspace-topline"><span>BM25 P@10 for 25 settings of k1 (rows) and b (columns)</span><button class="quiet-button" type="button" id="sweepBtn">Show table +</button></div>
+    <div class="rs-table" id="sweepTable"></div>
+    <div class="rs-grid2" id="sweepCharts" style="border-top:0"></div>
+    <p class="rs-cap rs-pad" style="padding-top:0;margin-top:0">On the standard pool the best column is b = 0, which turns off length normalization and lets long documents win. On the length matched pool that advantage disappears and b = 0.75 is best, the usual default.</p>
+    <div class="workspace-topline"><span>P@10 as Alpaca noise grows · 500 GSM8K problems and 100 near duplicates held fixed</span><button class="quiet-button" type="button" id="scaleBtn">Show table +</button></div>
+    <div class="rs-table" id="scaleTable"></div>
+    <div class="rs-pad"><div class="rs-legend" id="scaleLegend"></div><div id="scaleChart"></div>
+    <p class="rs-cap" id="scaleCap"></p></div>
+  </div>
+</section>
+
+<section class="limits-section page-width" id="errors" aria-labelledby="errors-title">
+  <div><p class="eyebrow">Error analysis</p><h2 id="errors-title">Topic is not task.</h2><p id="errStats"></p>
+  <p>The worst mistakes share a rare topic word with the query but are not math problems. Removing stop words makes this worse, because words like "how", "many" and "each" are the strongest sign of a word problem, and BM25 without them falls from 0.71 to 0.55 on the fair pool.</p></div>
+  <div id="fpList"></div>
+</section>
+
+<section class="section page-width" id="demo" aria-labelledby="demo-title">
+  <div class="section-heading"><div><p class="eyebrow">Live demo</p><h2 id="demo-title">Search the pool<br>yourself.</h2></div>
+  <p>BM25 runs in your browser over 3,360 items: 3,000 Alpaca instructions, 300 GSM8K problems and 60 near duplicates. Type a math word problem or pick one, then try removing stop words.</p></div>
+  <div class="result-workspace">
+    <div class="workspace-topline"><span>In browser BM25 · k1 = 1.5 · b = 0.75</span><span>Top 10</span></div>
+    <div class="rs-pad">
+      <div class="rs-chips" id="chips"></div>
+      <div class="rs-search"><textarea id="q" aria-label="Search query" placeholder="A baker makes 24 muffins and packs them in boxes of 4. How many boxes does she fill?"></textarea><button id="go" type="button">Search</button></div>
+      <div class="rs-demo-head"><div class="rs-score" id="demoScore"></div><div class="segmented" role="group" aria-label="Stop words" id="stopSeg"><button type="button" aria-pressed="true" data-stop="0">Keep stop words</button><button type="button" aria-pressed="false" data-stop="1">Remove stop words</button></div></div>
+      <div id="hits"></div>
+    </div>
+  </div>
+</section>
+
+<section class="limits-section page-width" id="limits" aria-labelledby="limits-title">
+  <div><p class="eyebrow">Limits</p><h2 id="limits-title">What this does not show.</h2><p>Each limit points at the next experiment.</p></div>
+  <div class="limits-list">
+    <details><summary>Relevance comes from the source dataset.</summary><p>A real math question inside Alpaca counts as not relevant, so precision is slightly underestimated for every ranker.</p></details>
+    <details><summary>Retrieval quality is not model quality.</summary><p>The study does not fine tune a model on the ranked data. The next step is to train Granite on BM25 ranked and random subsets of equal size and compare GSM8K accuracy.</p></details>
+    <details><summary>Only lexical and linear rankers.</summary><p>A neural embedding ranker, tested on the length matched pool, is the natural next comparison.</p></details>
+    <details><summary>Short near duplicates can slip past MinHash.</summary><p>About a quarter of planted copies survive. One likely reason: in a short problem, changing one number removes a large share of the word 3 gram shingles, so similarity can fall below the 0.8 threshold. A unit test confirms this happens for short texts.</p></details>
+  </div>
+</section>
+
+<section class="closing-section" id="run" aria-labelledby="run-title"><div class="page-width">
+  <p class="eyebrow">Reproduce it</p><h2 id="run-title">Every number on this page<br>can be reproduced.</h2>
+  <p>No GPU and no API key. About a minute on a laptop CPU.</p>
 <pre><code>git clone https://github.com/AviSrikumeran/granitequery
 cd granitequery/ranking_study
 pip install -r requirements.txt
@@ -254,12 +227,11 @@ python download_data.py
 python run_experiments.py
 python build_site.py
 python -m unittest discover -s tests</code></pre>
-<p>Results are written to <code>ranking_study/results/results.json</code>, and this page is rebuilt into <code>docs/index.html</code>.</p>
-</section>
-
-<footer>Granite Query · CS 410, University of Illinois Urbana Champaign · GSM8K (MIT license) and Stanford Alpaca (CC BY NC 4.0)</footer>
+  <div class="rs-close-actions"><a class="action action-light" href="https://github.com/AviSrikumeran/granitequery">Source code and README <span aria-hidden="true">↗</span></a><a class="text-link" href="original.html">Earlier fine tuning research ↗</a></div>
+</div></section>
 </main>
-<div class="tip" id="tip"></div>
+<footer class="rs-footer page-width"><span>Avinash Sri-kumeran (aus4) · CS 410, University of Illinois Urbana Champaign · Fall 2026</span><nav><a href="#solution">Solution</a><a href="#findings">Results</a><a href="https://github.com/AviSrikumeran/granitequery">GitHub ↗</a></nav></footer>
+<div class="rs-tip" id="tip"></div>
 
 <script id="results-data" type="application/json">__RESULTS__</script>
 <script id="demo-data" type="application/json">__DEMO__</script>
@@ -267,232 +239,209 @@ python -m unittest discover -s tests</code></pre>
 (() => {
 const R = JSON.parse(document.getElementById("results-data").textContent);
 const D = JSON.parse(document.getElementById("demo-data").textContent);
-const NS = "http://www.w3.org/2000/svg";
-const tip = document.getElementById("tip");
-const fmt = (x, d = 3) => x.toFixed(d);
-const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const NS = "http://www.w3.org/2000/svg", tip = document.getElementById("tip");
+const $ = id => document.getElementById(id);
+const f2 = x => x.toFixed(2), f3 = x => x.toFixed(3);
+const txt = (el, s) => { el.textContent = s; return el; };
+function el(tag, attrs = {}, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function h(tag, cls, text, parent) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; }
+function showTip(e, title, lines) { tip.innerHTML = ""; h("b", null, title, tip); lines.forEach(l => h("div", null, l, tip)); tip.style.left = Math.min(e.clientX + 14, innerWidth - 270) + "px"; tip.style.top = (e.clientY + 14) + "px"; tip.style.opacity = 1; }
+const hideTip = () => tip.style.opacity = 0;
+function table(box, head, rows) { box.innerHTML = ""; const wrap = h("div", "table-container", null, box), t = h("table", null, null, wrap), tr = h("tr", null, null, h("thead", null, null, t)); head.forEach(c => h("th", null, c, tr)); const tb = h("tbody", null, null, t); rows.forEach(r => { const row = h("tr", null, null, tb); r.forEach(c => h("td", null, String(c), row)); }); }
+function toggler(btnId, boxId) { const b = $(btnId), box = $(boxId); b.onclick = () => { const o = box.classList.toggle("is-open"); b.textContent = o ? "Hide table −" : "Show table +"; }; }
 
-function el(tag, attrs = {}, parent) {
-  const e = document.createElementNS(NS, tag);
-  for (const k in attrs) e.setAttribute(k, attrs[k]);
-  if (parent) parent.appendChild(e);
-  return e;
-}
-function showTip(evt, title, rows) {
-  tip.innerHTML = `<div class="t"></div>` + rows.map(() => `<div class="r"></div>`).join("");
-  tip.querySelector(".t").textContent = title;
-  tip.querySelectorAll(".r").forEach((n, i) => n.textContent = rows[i]);
-  const x = Math.min(evt.clientX + 14, window.innerWidth - 290);
-  tip.style.left = x + "px"; tip.style.top = (evt.clientY + 14) + "px"; tip.style.opacity = 1;
-}
-function hideTip() { tip.style.opacity = 0; }
-function table(container, headers, rows) {
-  const t = document.createElement("table"); t.className = "data";
-  t.innerHTML = "<thead><tr>" + headers.map(h => "<th></th>").join("") + "</tr></thead><tbody></tbody>";
-  t.querySelectorAll("th").forEach((th, i) => th.textContent = headers[i]);
-  const tb = t.querySelector("tbody");
-  rows.forEach(r => { const tr = document.createElement("tr"); r.forEach(c => { const td = document.createElement("td"); td.textContent = c; tr.appendChild(td); }); tb.appendChild(tr); });
-  container.innerHTML = ""; container.appendChild(t);
-}
-function toggle(btnId, boxId) {
-  const b = document.getElementById(btnId), box = document.getElementById(boxId);
-  b.addEventListener("click", () => { box.hidden = !box.hidden; b.textContent = box.hidden ? "Show table" : "Hide table"; });
-}
+// Navigation menu (mobile)
+const menu = document.querySelector(".menu-toggle"), nav = $("main-nav");
+menu.onclick = () => { const o = menu.getAttribute("aria-expanded") !== "true"; menu.setAttribute("aria-expanded", o); nav.classList.toggle("is-open", o); };
+nav.addEventListener("click", e => { if (e.target.closest("a")) { menu.setAttribute("aria-expanded", "false"); nav.classList.remove("is-open"); } });
 
-// Theme toggle
-document.getElementById("themebtn").addEventListener("click", () => {
-  const root = document.documentElement;
-  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  root.dataset.theme = dark ? "light" : "dark";
-  renderAll();
-});
+// Hero art from the site's shared renderer
+const art = $("hero-material");
+import("./site/hero.js?v=20261104-4").then(({ initHero }) => initHero(art)).catch(() => art.setAttribute("aria-label", "Magenta material illustration."));
 
-const METRICS = ["P@10", "MRR", "nDCG@10", "Recall@100"];
-const POOLS = [["full", "Standard pool", "5,600 items"], ["dedup", "Deduplicated", "MinHash removed about 75 items"], ["length_matched", "Length matched", "2,016 items, Alpaca matched to GSM8K length"]];
+const M = ["P@10", "MRR", "nDCG@10", "Recall@100"];
 const ORDER = ["Random", "Length only", "TF IDF", "TF IDF + Rocchio feedback", "LSA (200 dims)", "BM25", "BM25 no stop words"];
-const SHORT = {"TF IDF + Rocchio feedback": "TF IDF + Rocchio", "LSA (200 dims)": "LSA"};
-let metric = "P@10";
-
-// Tiles
-const lm = R.main.length_matched, full = R.main.full;
-const tiles = [
-  [fmt(lm["BM25"]["P@10"].mean, 2), "BM25 P@10 on the length matched pool, vs " + fmt(lm["Random"]["P@10"].mean, 2) + " random"],
-  [fmt(full["Length only"]["P@10"].mean, 2), "P@10 from document length alone on the standard pool"],
-  [Math.round(100 * R.dedup.reduce((a, d) => a + d.removed_relevant, 0) / (R.dedup.length * R.config.n_dupes)) + "%", "of planted near duplicates caught by MinHash, with zero wrong removals"],
-  [R.config.n_queries * R.config.seeds.length, "queries scored per ranker per pool"],
+const SHORT = { "TF IDF + Rocchio feedback": "TF IDF + Rocchio", "LSA (200 dims)": "LSA" };
+const DESC = {
+  "Random": "Uniform random order. The floor every method has to beat.",
+  "Length only": "Ignores the query and returns the longest items first. A sanity check for the length shortcut.",
+  "TF IDF": "Vector space model with TF IDF weights and cosine similarity.",
+  "TF IDF + Rocchio feedback": "Pseudo relevance feedback: assume the top 10 are relevant and move the query toward their centroid.",
+  "LSA (200 dims)": "TF IDF reduced to 200 latent dimensions with truncated SVD.",
+  "BM25": "Okapi BM25 with k1 = 1.5 and b = 0.75. Term frequency saturation plus length normalization.",
+  "BM25 no stop words": "The same BM25 with the English stop word list removed from queries and documents."
+};
+const POOLS = [
+  ["length_matched", "Length matched", "2,016 items · fair comparison", "Length matched pool", "1,800 Alpaca items sampled to match GSM8K word counts, plus 180 GSM8K problems and 36 near duplicates. Length alone no longer helps."],
+  ["full", "Standard", "5,600 items", "Standard pool", "5,000 random Alpaca items, 500 GSM8K problems and 100 near duplicates. Long documents are mostly relevant here."],
+  ["dedup", "Deduplicated", "about 5,525 items", "Standard pool after MinHash", "The standard pool after MinHash deduplication with word 3 gram shingles and a 0.8 Jaccard threshold."]
 ];
-document.getElementById("tiles").innerHTML = tiles.map(() => `<div class="tile"><div class="num"></div><div class="lab"></div></div>`).join("");
-document.querySelectorAll("#tiles .tile").forEach((t, i) => { t.querySelector(".num").textContent = tiles[i][0]; t.querySelector(".lab").textContent = tiles[i][1]; });
+const lm = R.main.length_matched, full = R.main.full;
 
-// Metric switch
-const seg = document.getElementById("metricSeg");
-METRICS.forEach(m => { const b = document.createElement("button"); b.type = "button"; b.textContent = m; b.setAttribute("aria-pressed", m === metric); b.onclick = () => { metric = m; seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.textContent === m)); renderMain(); }; seg.appendChild(b); });
-toggle("mainTableBtn", "mainTable"); toggle("sweepTableBtn", "sweepTable"); toggle("scaleTableBtn", "scaleTable");
+// Spec strip
+const spec = [
+  ["Best fair P@10", f2(lm.BM25["P@10"].mean), "BM25, vs " + f2(lm.Random["P@10"].mean) + " for random"],
+  ["Length alone", f2(full["Length only"]["P@10"].mean), "P@10 on the standard pool, query ignored"],
+  ["Duplicates caught", Math.round(100 * R.dedup.reduce((a, d) => a + d.removed_relevant, 0) / (R.dedup.length * R.config.n_dupes)) + "%", "with zero wrong removals"],
+  ["Queries scored", String(R.config.n_queries * R.config.seeds.length), "per ranker per pool, no test leakage"]
+];
+spec.forEach(([a, b, c]) => { const d = h("div", null, null, $("spec")); h("span", null, a, d); h("strong", null, b, d); h("small", null, c, d); });
+$("answerText").textContent = `On a pool where length gives nothing away, BM25 puts a math problem in ${Math.round(lm.BM25["P@10"].mean * 10)} of every 10 top slots, against about 1 for random order. On the standard pool two methods looked even better, but most of their edge came from document length, not meaning.`;
 
-function renderMain() {
-  const box = document.getElementById("mainCharts"); box.innerHTML = "";
-  const maxV = Math.max(...POOLS.flatMap(([p]) => ORDER.map(n => R.main[p][n][metric].mean)));
-  POOLS.forEach(([pool, title, sub]) => {
-    const wrap = document.createElement("div");
-    wrap.innerHTML = `<div class="mult-title"></div><div class="mult-sub"></div>`;
-    wrap.querySelector(".mult-title").textContent = title; wrap.querySelector(".mult-sub").textContent = sub;
-    const W = 320, rowH = 30, left = 142, right = 40, H = ORDER.length * rowH + 22;
-    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": `${metric} by ranker, ${title}` }, wrap);
-    const x = v => left + (W - left - right) * v / maxV;
-    [0, 0.5, 1].filter(v => v <= maxV + 1e-9).forEach(v => {
-      el("line", { x1: x(v), x2: x(v), y1: 0, y2: H - 18, stroke: css("--grid") }, svg);
-      el("text", { x: x(v), y: H - 4, "text-anchor": "middle", class: "lbl" }, svg).textContent = v.toFixed(1);
-    });
-    const best = ORDER.reduce((a, n) => R.main[pool][n][metric].mean > R.main[pool][a][metric].mean ? n : a, ORDER[0]);
-    ORDER.forEach((n, i) => {
-      const s = R.main[pool][n][metric], y = i * rowH + 6, h = rowH - 12;
-      el("text", { x: left - 8, y: y + h / 2 + 4, "text-anchor": "end", class: "mlbl" }, svg).textContent = SHORT[n] || n;
-      const w = Math.max(2, x(s.mean) - left);
-      el("rect", { x: left, y, width: w, height: h, rx: 4, fill: n === best ? css("--s1") : css("--neutral-bar") }, svg);
-      el("text", { x: left + w + 6, y: y + h / 2 + 4, class: "vlbl" }, svg).textContent = fmt(s.mean, 2);
-      const hit = el("rect", { x: 0, y: y - 4, width: W, height: rowH, fill: "transparent" }, svg);
-      hit.addEventListener("mousemove", e => showTip(e, `${n}`, [`${title}`, `${metric}: ${fmt(s.mean)} ± ${fmt(s.std)}`]));
-      hit.addEventListener("mouseleave", hideTip);
-    });
-    box.appendChild(wrap);
+// Results workspace
+let pool = "length_matched", metric = "P@10", sel = "BM25";
+POOLS.forEach(([key, name, sub]) => { const b = h("button", null, null, $("poolTabs")); b.type = "button"; h("span", null, sub, b); b.append(name); b.dataset.k = key; b.onclick = () => { pool = key; renderResults(); }; });
+M.forEach(m => { const b = h("button", null, m, $("metricSeg")); b.type = "button"; b.dataset.m = m; b.onclick = () => { metric = m; renderResults(); }; });
+toggler("tableBtn", "mainTable");
+table($("mainTable"), ["Pool", "Ranker", ...M], POOLS.flatMap(([k, n]) => ORDER.map(r => [n, r, ...M.map(m => `${f3(R.main[k][r][m].mean)} ± ${f3(R.main[k][r][m].std)}`)])));
+
+function renderResults() {
+  const P = POOLS.find(p => p[0] === pool), data = R.main[pool];
+  $("poolTabs").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.k === pool));
+  $("metricSeg").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.m === metric));
+  txt($("poolEyebrow"), P[2]); txt($("poolTitle"), P[3]); txt($("poolDesc"), P[4]);
+  txt($("chartHeading"), `${metric} by ranker · mean of 3 seeds`);
+  const best = ORDER.reduce((a, r) => data[r][metric].mean > data[a][metric].mean ? r : a, ORDER[0]);
+  const max = Math.max(...ORDER.map(r => data[r][metric].mean));
+  const rows = $("rows"); rows.innerHTML = "";
+  ORDER.forEach(r => {
+    const s = data[r][metric], b = h("button", "result-row" + (r === sel ? " selected" : ""), null, rows); b.type = "button";
+    const name = h("span", "row-name", SHORT[r] || r, b); h("small", null, "± " + f3(s.std) + " across seeds", name);
+    const track = h("span", "row-track", null, b), fill = h("span", r === best ? "is-best" : "", null, track); fill.style.width = (100 * s.mean / max) + "%";
+    const v = h("span", "row-value", f3(s.mean), b);
+    b.onclick = () => { sel = r; renderResults(); };
   });
-  const rows = [];
-  POOLS.forEach(([p, t]) => ORDER.forEach(n => rows.push([`${t}: ${n}`, ...METRICS.map(m => `${fmt(R.main[p][n][m].mean)} ± ${fmt(R.main[p][n][m].std)}`)])));
-  table(document.getElementById("mainTable"), ["Pool and ranker", ...METRICS], rows);
+  const s = data[sel], rnd = data.Random[metric].mean;
+  txt($("inspPool"), P[1]); txt($("inspName"), sel); txt($("inspDesc"), DESC[sel]);
+  txt($("inspScore"), f3(s[metric].mean)); txt($("inspScoreLab"), `${metric}, ± ${f3(s[metric].std)} across 3 seeds`);
+  if (sel === "Random") { txt($("inspLift"), "Baseline"); txt($("inspLiftNote"), "Every other ranker is measured against this."); }
+  else { const ratio = s[metric].mean / rnd; txt($("inspLift"), (ratio >= 1 ? f2(ratio) + "×" : f2(ratio) + "×")); txt($("inspLiftNote"), `${f3(s[metric].mean)} against ${f3(rnd)} for random order on ${metric}.`); }
+  const box = $("inspMetrics"); box.innerHTML = "";
+  M.forEach(m => { const d = h("div", null, null, box); h("span", null, m, d); const b = h("b", null, f3(s[m].mean), d); h("i", null, "± " + f3(s[m].std), b); });
 }
-document.getElementById("mainTakeaway").textContent =
-  `The blue bar is the best ranker in each pool. On the standard pool LSA leads with P@10 ${fmt(full["LSA (200 dims)"]["P@10"].mean, 2)}, ahead of BM25 at ${fmt(full["BM25"]["P@10"].mean, 2)}. On the length matched pool the order flips: BM25 reaches ${fmt(lm["BM25"]["P@10"].mean, 2)} and LSA ${fmt(lm["LSA (200 dims)"]["P@10"].mean, 2)}. Rocchio feedback adds little, and removing stop words hurts BM25 in every pool.`;
-const dd = R.dedup;
-document.getElementById("dedupText").textContent =
-  `MinHash removed ${dd.map(d => d.removed_relevant).join(", ")} of the 100 planted near duplicates across the three seeds and removed ${dd.reduce((a, d) => a + d.removed_nonrelevant, 0)} Alpaca items. Because the removed copies counted as relevant, precision drops slightly after deduplication (BM25 P@10 ${fmt(full.BM25["P@10"].mean)} to ${fmt(R.main.dedup.BM25["P@10"].mean)}), while Recall@100 rises (${fmt(full.BM25["Recall@100"].mean)} to ${fmt(R.main.dedup.BM25["Recall@100"].mean)}), mostly because there are fewer relevant items left to find. In a real pipeline this is the trade you want: the top results no longer repeat the same problem twice.`;
+renderResults();
 
-function lerpColor(a, b, t) {
-  const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
-  const A = p(a), B = p(b);
-  return "rgb(" + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",") + ")";
+// Before and after
+const ba = [
+  ["Length only · P@10", full["Length only"]["P@10"].mean, lm["Length only"]["P@10"].mean, "Ignoring the query stops working once lengths match."],
+  ["LSA · P@10", full["LSA (200 dims)"]["P@10"].mean, lm["LSA (200 dims)"]["P@10"].mean, "Most of LSA's lead on the standard pool came from length."],
+  ["BM25 · P@10", full.BM25["P@10"].mean, lm.BM25["P@10"].mean, "BM25 holds up and becomes the best ranker."]
+];
+ba.forEach(([lab, a, b, note]) => { const d = h("div", null, null, $("beforeAfter")); h("span", "eyebrow", lab, d); const row = h("div", "before-after", null, d); h("span", null, f2(a), row); h("i", null, "→", row); h("strong", null, f2(b), row); h("p", null, note, d); });
+h("p", "transfer-caption", "Standard pool on the left, length matched pool on the right. Means of 3 seeds.", $("beforeAfter"));
+
+// Method map
+const STAGES = [
+  ["select-art", "Build pools", "Mix Alpaca with GSM8K, plant near duplicates, then make a deduplicated and a length matched copy.", ["5,000 Alpaca + 500 GSM8K + 100 near duplicates per seed", "MinHash LSH copy: 128 permutations, Jaccard 0.8", "Length matched copy: Alpaca sampled into six word count buckets that mirror GSM8K"]],
+  ["", "Rank", "Every ranker scores every pool item for each of 300 GSM8K test questions.", ["Seven rankers, from random to BM25", "BM25 on sparse matrices, about 30 times faster than rank_bm25 with identical scores", "Queries come from the GSM8K test split, which shares no near duplicates with training"]],
+  ["evaluate-art", "Score", "Binary relevance gives exact metrics for every ranking.", ["P@10, MRR, nDCG@10, Recall@100", "Averaged over 3 seeds, each with a new pool and new queries", "All numbers saved to results/results.json"]],
+  ["train-art", "Control", "Sanity baselines and extra checks catch results that look too good.", ["Length only baseline exposed the shortcut", "BM25 sweep over 25 settings of k1 and b", "Pool size test from 1,600 to 40,600 items, plus error analysis"]]
+];
+let stage = 0;
+STAGES.forEach(([artCls, name, short], i) => { const b = h("button", null, null, $("methodMap")); b.type = "button"; const a = h("span", "method-art " + artCls, null, b); a.setAttribute("aria-hidden", "true"); for (let k = 0; k < 3; k++) h("i", null, null, a); h("span", "method-number", "0" + (i + 1), b); h("strong", null, name, b); h("span", null, short, b); b.onclick = () => { stage = i; renderStage(); }; });
+function renderStage() {
+  $("methodMap").querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", i === stage));
+  const [, name, short, items] = STAGES[stage], d = $("methodDetail"); d.innerHTML = "";
+  h("p", "eyebrow", "Stage 0" + (stage + 1), d); h("h3", null, name, d); h("p", null, short, d);
+  const ul = h("ul", null, null, d); items.forEach(x => h("li", null, x, ul));
 }
-function renderSweep() {
-  const box = document.getElementById("sweepCharts"); box.innerHTML = "";
-  const k1s = [...new Set(R.bm25_sweep.full.map(r => r.k1))], bs = [...new Set(R.bm25_sweep.full.map(r => r.b))];
-  const all = Object.values(R.bm25_sweep).flat().map(r => r["P@10"]);
-  const lo = Math.min(...all), hi = Math.max(...all);
-  const lo_c = css("--seq-lo"), hi_c = css("--seq-hi");
-  [["full", "Standard pool"], ["length_matched", "Length matched pool"]].forEach(([pool, title]) => {
-    const wrap = document.createElement("div");
-    wrap.innerHTML = `<div class="mult-title"></div><div class="mult-sub">Rows: k1. Columns: b.</div>`;
-    wrap.querySelector(".mult-title").textContent = title;
-    const cw = 50, ch = 34, left = 40, top = 22, W = left + bs.length * cw + 4, H = top + k1s.length * ch + 4;
-    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", style: "max-width:320px", role: "img", "aria-label": `BM25 sweep ${title}` }, wrap);
-    bs.forEach((b, j) => el("text", { x: left + j * cw + cw / 2, y: 14, "text-anchor": "middle", class: "lbl" }, svg).textContent = "b " + b);
-    const grid = R.bm25_sweep[pool], best = grid.reduce((a, r) => r["P@10"] > a["P@10"] ? r : a);
-    k1s.forEach((k, i) => {
-      el("text", { x: left - 6, y: top + i * ch + ch / 2 + 4, "text-anchor": "end", class: "lbl" }, svg).textContent = k;
-      bs.forEach((b, j) => {
-        const r = grid.find(g => g.k1 === k && g.b === b), t = (r["P@10"] - lo) / (hi - lo);
-        const rect = el("rect", { x: left + j * cw + 1, y: top + i * ch + 1, width: cw - 2, height: ch - 2, rx: 4, fill: lerpColor(lo_c, hi_c, t) }, svg);
-        const txt = el("text", { x: left + j * cw + cw / 2, y: top + i * ch + ch / 2 + 4, "text-anchor": "middle", "font-size": 11.5, "font-weight": r === best ? 700 : 400, fill: t > 0.55 ? (document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches) ? "#0b0b0b" : "#ffffff") : css("--text") }, svg);
-        txt.textContent = fmt(r["P@10"], 2);
-        rect.addEventListener("mousemove", e => showTip(e, `k1 = ${k}, b = ${b}`, [title, `P@10: ${fmt(r["P@10"])}`, `MRR: ${fmt(r.MRR)}`, r === best ? "Best in this pool" : ""].filter(Boolean)));
-        rect.addEventListener("mouseleave", hideTip);
-      });
+renderStage();
+
+// BM25 sweep heatmaps
+const LO = [246, 230, 241], HI = [109, 26, 78];
+const mix = t => `rgb(${LO.map((v, i) => Math.round(v + (HI[i] - v) * t)).join(",")})`;
+const allP = Object.values(R.bm25_sweep).flat().map(r => r["P@10"]), lo = Math.min(...allP), hi = Math.max(...allP);
+const k1s = [...new Set(R.bm25_sweep.full.map(r => r.k1))], bs = [...new Set(R.bm25_sweep.full.map(r => r.b))];
+[["length_matched", "Length matched pool"], ["full", "Standard pool"]].forEach(([k, title]) => {
+  const box = h("div", null, null, $("sweepCharts")); h("p", "rs-sub", title, box);
+  const cw = 64, ch = 40, L = 44, T = 24, W = L + bs.length * cw, H = T + k1s.length * ch;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", style: "max-width:420px", role: "img", "aria-label": `BM25 P@10 sweep, ${title}` }, box);
+  bs.forEach((b, j) => txt(el("text", { x: L + j * cw + cw / 2, y: 14, "text-anchor": "middle", "font-size": 10, fill: "#716575" }, svg), "b " + b));
+  const grid = R.bm25_sweep[k], best = grid.reduce((a, r) => r["P@10"] > a["P@10"] ? r : a);
+  k1s.forEach((k1, i) => {
+    txt(el("text", { x: L - 8, y: T + i * ch + ch / 2 + 4, "text-anchor": "end", "font-size": 10, fill: "#716575" }, svg), "k1 " + k1);
+    bs.forEach((b, j) => {
+      const r = grid.find(g => g.k1 === k1 && g.b === b), t = (r["P@10"] - lo) / (hi - lo);
+      const rect = el("rect", { x: L + j * cw + 1, y: T + i * ch + 1, width: cw - 2, height: ch - 2, fill: mix(t) }, svg);
+      if (r === best) el("rect", { x: L + j * cw + 2, y: T + i * ch + 2, width: cw - 4, height: ch - 4, fill: "none", stroke: "#251d28", "stroke-width": 2 }, svg);
+      txt(el("text", { x: L + j * cw + cw / 2, y: T + i * ch + ch / 2 + 4, "text-anchor": "middle", "font-size": 11.5, fill: t > .5 ? "#fff" : "#251d28" }, svg), f2(r["P@10"]));
+      rect.addEventListener("mousemove", e => showTip(e, `k1 = ${k1}, b = ${b}`, [title, `P@10 ${f3(r["P@10"])}`, `MRR ${f3(r.MRR)}`].concat(r === best ? ["Best setting in this pool"] : [])));
+      rect.addEventListener("mouseleave", hideTip);
     });
-    box.appendChild(wrap);
   });
-  table(document.getElementById("sweepTable"), ["k1", "b", "P@10 standard", "P@10 length matched"],
-    R.bm25_sweep.full.map((r, i) => [r.k1, r.b, fmt(r["P@10"]), fmt(R.bm25_sweep.length_matched[i]["P@10"])]));
-}
+});
+toggler("sweepBtn", "sweepTable");
+table($("sweepTable"), ["k1", "b", "P@10 length matched", "P@10 standard"], R.bm25_sweep.full.map((r, i) => [r.k1, r.b, f3(R.bm25_sweep.length_matched[i]["P@10"]), f3(r["P@10"])]));
 
-function renderScale() {
-  const S = R.pool_scaling, series = [["BM25", "--s1"], ["TF IDF", "--s2"], ["Random", "--s3"]];
-  document.getElementById("scaleLegend").innerHTML = series.map(() => "<span></span>").join("");
-  document.querySelectorAll("#scaleLegend span").forEach((s, i) => { s.textContent = series[i][0]; s.style.setProperty("--c", css(series[i][1])); });
-  const W = 860, H = 300, L = 44, Rt = 70, T = 12, B = 36;
-  const box = document.getElementById("scaleChart"); box.innerHTML = "";
-  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": "P@10 as pool size grows" }, box);
-  const xs = S.map(r => Math.log10(r.pool_size)), x0 = Math.min(...xs), x1 = Math.max(...xs);
+// Pool scaling line chart
+const S = R.pool_scaling, SER = [["BM25", "#9b286e"], ["TF IDF", "#2a78d6"], ["Random", "#1baf7a"]];
+SER.forEach(([n, c]) => { const s = h("span", null, n, $("scaleLegend")); s.style.setProperty("--c", c); });
+(() => {
+  const W = 1000, H = 320, L = 46, Rt = 76, T = 12, B = 40, box = $("scaleChart");
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": "P@10 as the pool grows" }, box);
+  const lx = S.map(r => Math.log10(r.pool_size)), x0 = Math.min(...lx), x1 = Math.max(...lx);
   const x = v => L + (W - L - Rt) * (Math.log10(v) - x0) / (x1 - x0), y = v => T + (H - T - B) * (1 - v);
-  [0, 0.25, 0.5, 0.75, 1].forEach(v => { el("line", { x1: L, x2: W - Rt, y1: y(v), y2: y(v), stroke: css("--grid") }, svg); el("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end", class: "lbl" }, svg).textContent = v.toFixed(2); });
-  S.forEach(r => el("text", { x: x(r.pool_size), y: H - 14, "text-anchor": "middle", class: "lbl" }, svg).textContent = r.pool_size.toLocaleString());
-  el("text", { x: (L + W - Rt) / 2, y: H - 1, "text-anchor": "middle", class: "lbl" }, svg).textContent = "Pool size (log scale)";
-  series.forEach(([name, c]) => {
-    el("path", { d: S.map((r, i) => (i ? "L" : "M") + x(r.pool_size) + " " + y(r[name])).join(" "), fill: "none", stroke: css(c), "stroke-width": 2, "stroke-linejoin": "round" }, svg);
-    S.forEach(r => el("circle", { cx: x(r.pool_size), cy: y(r[name]), r: 4, fill: css(c), stroke: css("--surface"), "stroke-width": 2 }, svg));
-    const last = S[S.length - 1];
-    el("text", { x: x(last.pool_size) + 10, y: y(last[name]) + 4, class: "mlbl" }, svg).textContent = name;
+  [0, .25, .5, .75, 1].forEach(v => { el("line", { x1: L, x2: W - Rt, y1: y(v), y2: y(v), stroke: "#e9e0e6" }, svg); txt(el("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end", "font-size": 11, fill: "#716575" }, svg), v.toFixed(2)); });
+  S.forEach(r => txt(el("text", { x: x(r.pool_size), y: H - 20, "text-anchor": "middle", "font-size": 11, fill: "#716575" }, svg), r.pool_size.toLocaleString()));
+  txt(el("text", { x: (L + W - Rt) / 2, y: H - 3, "text-anchor": "middle", "font-size": 11, fill: "#716575" }, svg), "Pool size (log scale)");
+  SER.forEach(([n, c]) => {
+    el("path", { d: S.map((r, i) => (i ? "L" : "M") + x(r.pool_size) + " " + y(r[n])).join(" "), fill: "none", stroke: c, "stroke-width": 2 }, svg);
+    S.forEach(r => el("circle", { cx: x(r.pool_size), cy: y(r[n]), r: 4.5, fill: c, stroke: "#fffcf8", "stroke-width": 2 }, svg));
+    txt(el("text", { x: x(S[S.length - 1].pool_size) + 10, y: y(S[S.length - 1][n]) + 4, "font-size": 12, fill: "#251d28" }, svg), n);
   });
-  const cross = el("line", { y1: T, y2: H - B, stroke: css("--muted"), "stroke-dasharray": "3 3", opacity: 0 }, svg);
+  const cross = el("line", { y1: T, y2: H - B, stroke: "#9b286e", "stroke-dasharray": "3 3", opacity: 0 }, svg);
   const hit = el("rect", { x: L, y: T, width: W - L - Rt, height: H - T - B, fill: "transparent" }, svg);
   hit.addEventListener("mousemove", e => {
-    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
-    const px = pt.matrixTransform(svg.getScreenCTM().inverse()).x;
+    const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; const px = p.matrixTransform(svg.getScreenCTM().inverse()).x;
     const r = S.reduce((a, s) => Math.abs(x(s.pool_size) - px) < Math.abs(x(a.pool_size) - px) ? s : a);
     cross.setAttribute("x1", x(r.pool_size)); cross.setAttribute("x2", x(r.pool_size)); cross.setAttribute("opacity", 1);
-    showTip(e, `${r.pool_size.toLocaleString()} items`, [`Relevant share: ${(100 * r.relevant_share).toFixed(1)}%`, ...series.map(([n]) => `${n}: ${fmt(r[n])}`)]);
+    showTip(e, r.pool_size.toLocaleString() + " items", [`Relevant share ${(100 * r.relevant_share).toFixed(1)}%`].concat(SER.map(([n]) => `${n} ${f3(r[n])}`)));
   });
   hit.addEventListener("mouseleave", () => { hideTip(); cross.setAttribute("opacity", 0); });
-  table(document.getElementById("scaleTable"), ["Pool size", "Relevant share", "BM25", "TF IDF", "Random"],
-    S.map(r => [r.pool_size.toLocaleString(), (100 * r.relevant_share).toFixed(1) + "%", fmt(r.BM25), fmt(r["TF IDF"]), fmt(r.Random)]));
-}
+})();
+toggler("scaleBtn", "scaleTable");
+table($("scaleTable"), ["Pool size", "Relevant share", "BM25", "TF IDF", "Random"], S.map(r => [r.pool_size.toLocaleString(), (100 * r.relevant_share).toFixed(1) + "%", f3(r.BM25), f3(r["TF IDF"]), f3(r.Random)]));
+$("scaleCap").textContent = `As relevant items shrink from ${(100 * S[0].relevant_share).toFixed(0)}% to ${(100 * S[S.length - 1].relevant_share).toFixed(1)}% of the pool, BM25 falls from ${f2(S[0].BM25)} to ${f2(S[S.length - 1].BM25)} while random falls to ${f2(S[S.length - 1].Random)}. Relative to random, BM25's advantage grows as the pool gets noisier.`;
 
 // Error analysis
 const E = R.errors;
-document.getElementById("errStats").textContent =
-  `On the standard pool, BM25 returns a perfect top 10 for ${Math.round(100 * E.share_of_queries_with_p10_1)}% of queries, and ${Math.round(100 * E.share_of_queries_with_p10_below_half)}% of queries get fewer than half relevant results in the top 10. Below are the highest scoring non relevant results across all queries.`;
-const fp = document.getElementById("fpList");
-E.false_positives.forEach(f => {
-  const d = document.createElement("div"); d.className = "fp";
-  d.innerHTML = `<div class="q"></div><div class="h"></div>`;
-  d.querySelector(".q").textContent = f.query.length > 160 ? f.query.slice(0, 160) + "…" : f.query;
-  d.querySelector(".h").textContent = f.hit.replace(/\s+/g, " ").slice(0, 160);
-  fp.appendChild(d);
+$("errStats").textContent = `On the standard pool, BM25 returns a perfect top 10 for ${Math.round(100 * E.share_of_queries_with_p10_1)}% of queries, and ${Math.round(100 * E.share_of_queries_with_p10_below_half)}% get fewer than half relevant. These are its highest scoring mistakes.`;
+const seen = new Set();
+E.false_positives.filter(fp => { const k = fp.query; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6).forEach(fp => {
+  const d = h("div", "rs-fp", null, $("fpList"));
+  const a = h("div", null, null, d); h("span", null, "Math query", a); a.append(fp.query.length > 150 ? fp.query.slice(0, 150) + "…" : fp.query);
+  const b = h("div", "hit", null, d); h("span", null, "Retrieved Alpaca item", b); b.append(fp.hit.replace(/\s+/g, " ").slice(0, 150));
 });
 
-// In browser BM25
+// In browser BM25 demo
 const STOP = new Set(__STOPWORDS__);
 const tok = (s, stop) => (s.toLowerCase().match(/[a-z0-9]+/g) || []).filter(t => !stop || !STOP.has(t));
-function buildIndex(stop) {
-  const docs = D.docs.map(d => tok(d, stop)), df = new Map(), tfs = [];
-  let total = 0;
-  docs.forEach(ts => { const tf = new Map(); ts.forEach(t => tf.set(t, (tf.get(t) || 0) + 1)); tfs.push(tf); total += ts.length; tf.forEach((_, t) => df.set(t, (df.get(t) || 0) + 1)); });
-  const N = docs.length, idf = new Map(); let sum = 0;
-  df.forEach((n, t) => { const v = Math.log(N - n + 0.5) - Math.log(n + 0.5); idf.set(t, v); sum += v; });
-  const eps = 0.25 * sum / idf.size; idf.forEach((v, t) => { if (v < 0) idf.set(t, eps); });
-  return { tfs, idf, dl: docs.map(d => d.length), avg: total / N, stop };
+function index(stop) {
+  const tfs = [], df = new Map(); let total = 0;
+  const dl = D.docs.map(d => { const ts = tok(d, stop), tf = new Map(); ts.forEach(t => tf.set(t, (tf.get(t) || 0) + 1)); tfs.push(tf); total += ts.length; tf.forEach((_, t) => df.set(t, (df.get(t) || 0) + 1)); return ts.length; });
+  const N = D.docs.length, idf = new Map(); let sum = 0;
+  df.forEach((n, t) => { const v = Math.log(N - n + .5) - Math.log(n + .5); idf.set(t, v); sum += v; });
+  const eps = .25 * sum / idf.size; idf.forEach((v, t) => { if (v < 0) idf.set(t, eps); });
+  return { tfs, idf, dl, avg: total / N, stop };
 }
-const IDX = [buildIndex(false), buildIndex(true)];
-let useStop = 0;
+const IDX = [index(false), index(true)]; let useStop = 0;
 function search(q) {
-  const ix = IDX[useStop], k1 = 1.5, b = 0.75, qt = tok(q, ix.stop);
-  const scores = ix.tfs.map((tf, i) => { let s = 0; qt.forEach(t => { const f = tf.get(t); if (f) s += ix.idf.get(t) * f * (k1 + 1) / (f + k1 * (1 - b + b * ix.dl[i] / ix.avg)); }); return s; });
-  const top = scores.map((s, i) => [s, i]).sort((a, b) => b[0] - a[0]).slice(0, 10);
-  const nrel = top.filter(([, i]) => D.labels[i] === 1).length;
-  document.getElementById("demoSummary").textContent = qt.length ? `${nrel} of the top 10 results are GSM8K math problems (P@10 = ${(nrel / 10).toFixed(1)}).` : "Type a query to search.";
-  const out = document.getElementById("demoResults"); out.innerHTML = "";
-  if (!qt.length) return;
-  top.forEach(([s, i], r) => {
-    const d = document.createElement("div"); d.className = "result";
-    d.innerHTML = `<div class="rank"></div><div class="txt"></div><div><span class="badge"></span><span class="score"></span></div>`;
-    d.querySelector(".rank").textContent = r + 1;
-    const t = D.docs[i]; d.querySelector(".txt").textContent = t.length > 320 ? t.slice(0, 320) + "…" : t;
-    const bd = d.querySelector(".badge"); bd.textContent = D.labels[i] ? "GSM8K" : "Alpaca"; bd.classList.add(D.labels[i] ? "rel" : "non");
-    d.querySelector(".score").textContent = "score " + s.toFixed(1);
-    out.appendChild(d);
+  const ix = IDX[useStop], qt = tok(q, ix.stop), k1 = 1.5, b = .75, out = $("hits"); out.innerHTML = "";
+  if (!qt.length) { $("demoScore").textContent = "Type a query to search."; return; }
+  const sc = ix.tfs.map((tf, i) => { let s = 0; qt.forEach(t => { const n = tf.get(t); if (n) s += ix.idf.get(t) * n * (k1 + 1) / (n + k1 * (1 - b + b * ix.dl[i] / ix.avg)); }); return [s, i]; }).sort((a, c) => c[0] - a[0]).slice(0, 10);
+  const rel = sc.filter(([, i]) => D.labels[i]).length;
+  const s = $("demoScore"); s.textContent = `${rel} of 10 are math problems`; h("small", null, "P@10 = " + (rel / 10).toFixed(1), s);
+  sc.forEach(([score, i], r) => {
+    const row = h("div", "rs-hit" + (D.labels[i] ? "" : " non"), null, out); h("span", null, String(r + 1).padStart(2, "0"), row);
+    const t = D.docs[i]; h("span", "txt", t.length > 300 ? t.slice(0, 300) + "…" : t, row);
+    const src = h("span", "src " + (D.labels[i] ? "rel" : "non"), D.labels[i] ? "GSM8K" : "Alpaca", row); h("small", null, "score " + score.toFixed(1), src);
   });
 }
-const qbox = document.getElementById("q");
-document.getElementById("go").onclick = () => search(qbox.value);
-qbox.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); search(qbox.value); } });
-const chips = document.getElementById("exampleChips");
-D.example_queries.slice(0, 6).forEach(q => { const c = document.createElement("button"); c.type = "button"; c.textContent = q; c.title = q; c.onclick = () => { qbox.value = q; search(q); }; chips.appendChild(c); });
-document.querySelectorAll("#stopSeg button").forEach(b => b.onclick = () => {
-  useStop = +b.dataset.stop; document.querySelectorAll("#stopSeg button").forEach(x => x.setAttribute("aria-pressed", x === b)); if (qbox.value) search(qbox.value);
-});
-qbox.value = D.example_queries[0]; search(qbox.value);
-
-function renderAll() { renderMain(); renderSweep(); renderScale(); }
-renderAll();
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+const q = $("q"); $("go").onclick = () => search(q.value);
+q.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); search(q.value); } });
+D.example_queries.slice(0, 6).forEach(ex => { const b = h("button", null, ex, $("chips")); b.type = "button"; b.title = ex; b.onclick = () => { q.value = ex; search(ex); }; });
+$("stopSeg").querySelectorAll("button").forEach(b => b.onclick = () => { useStop = +b.dataset.stop; $("stopSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); search(q.value); });
+q.value = D.example_queries[0]; search(q.value);
 })();
 </script>
-</body>
-</html>
+</body></html>

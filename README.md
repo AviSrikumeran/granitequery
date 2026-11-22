@@ -117,7 +117,7 @@ Key implementation details:
 4. **MinHash dedup** (`minhash_dedup`) uses `datasketch` with word 3 gram shingles. It keeps the first item of each near duplicate group.
 5. **Length matched sampling** (`build_matched_pool`) puts GSM8K and Alpaca items into word count buckets (0 to 25, 25 to 35, 35 to 45, 45 to 55, 55 to 70, and over 70) and samples Alpaca to match GSM8K's share in each bucket.
 6. **Metrics** (`metrics_for`) use binary relevance. nDCG uses log2 discounts with the ideal DCG computed from the true number of relevant items.
-7. **Website**: `build_site.py` puts the results and a 3,360 item demo pool into one static HTML file. The charts are hand drawn SVG with hover tooltips, table views, and light and dark themes. The demo uses the same BM25 formula in JavaScript.
+7. **Website**: `build_site.py` puts the results and a 3,360 item demo pool into `docs/index.html`. The page reuses the site's shared component styles (`docs/site/site.css`, `docs/site/home.css`) and its animated hero art (`docs/site/hero.js`). Charts are hand drawn SVG with hover tooltips and table views, and the demo uses the same BM25 formula in JavaScript.
 
 ## 5. Installation and usage
 
