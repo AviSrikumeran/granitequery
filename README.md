@@ -3,7 +3,7 @@
 CS 410 Text Information Systems, Fall 2026 final project
 Avinash Sri-kumeran (aus4), working alone
 
-Project website with interactive charts and a live search demo: https://avisrikumeran.github.io/granite-query/
+Project website with interactive charts and a live search demo: https://avisrikumeran.github.io/granitequery/ (also https://granitequery.live)
 
 ## 1. Overview
 
@@ -94,7 +94,7 @@ The website also has the BM25 k1 × b sweep (25 settings on two pools), the pool
 ## 4. Implementation
 
 ```
-granite-query/
+granitequery/
 ├── ranking_study/               CS 410 submission code (everything below)
 │   ├── granite_query/
 │   │   ├── ranking.py           all rankers + MinHash deduplication
@@ -124,8 +124,8 @@ Key implementation details:
 Requirements: Python 3.10 or newer. No GPU or API key is needed.
 
 ```bash
-git clone https://github.com/avisrikumeran/granite-query
-cd granite-query/ranking_study
+git clone https://github.com/AviSrikumeran/granitequery
+cd granitequery/ranking_study
 pip install -r requirements.txt
 python download_data.py        # about 27 MB into data/
 python run_experiments.py      # about 1 minute on a laptop CPU
