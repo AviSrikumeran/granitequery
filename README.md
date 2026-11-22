@@ -158,8 +158,12 @@ You can also use the rankers directly:
 ```python
 from granite_query.ranking import BM25Ranker
 pool = ["Tom has 3 apples and buys 5 more. How many apples does he have?",
-        "Write a haiku about autumn."]
+        "Write a haiku about autumn.",
+        "Translate this sentence into French.",
+        "Name three primary colors.",
+        "Summarize the plot of a famous novel."]
 scores = BM25Ranker(pool).score("Sara has 4 pens and buys 2 more. How many pens?")
+print(scores.round(2))  # [4.55 0. 0. 0. 0.]: the math problem ranks first
 ```
 
 ## 6. Limitations and future work
