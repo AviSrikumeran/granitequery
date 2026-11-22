@@ -23,3 +23,4 @@
 **/*.tmp
 research/models/
 *.partial
+!ranking_study/results/results.json

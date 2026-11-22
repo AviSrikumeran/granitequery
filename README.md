@@ -1,80 +1,181 @@
-# Granite Query: Learning More from Less
+# Granite Query: Ranking Training Data as a Retrieval Problem
 
-Can student aware data selection teach a small Granite model mathematical reasoning more efficiently than random selection?
+CS 410 Text Information Systems, Fall 2026 final project
+Avinash Sri-kumeran (aus4), working alone
 
-Granite Query compares cheap relevance/skill heuristics and a LESS-inspired gradient selector under matched training-token budgets. DeepSeek supplies concise solutions; a pinned IBM Granite 4.2 3B checkpoint learns through independent LoRA runs on Modal. Accuracy gains must be measured. A custom checkpoint, a lower training loss or a larger dataset is not evidence that ranking helped.
+Project website with interactive charts and a live search demo: https://avisrikumeran.github.io/granite-query/
 
-[Research dashboard](https://avisrikumeran.github.io/granite-query/) · [Journal](progress/JOURNAL.md) · [Accomplishments audit](progress/ACCOMPLISHMENTS.md) · [Execution plan](progress/RESEARCH_EXECUTION_PLAN.md)
+## 1. Overview
 
-## Measured results
+Before you fine tune a language model such as IBM Granite for a task, you have to decide which training examples to use. General instruction pools like Alpaca are large and mostly unrelated to any one task. This project treats data selection as a retrieval problem:
 
-The first completed token-matched study used the same 477 eligible teacher examples, 32,768 supervised answer tokens, 32 effective updates and 64 development questions per arm. Every adapter started independently from the pinned base.
+> Given a math word problem as the query, how well can a ranker pull math word problems to the top of a mixed training pool?
 
-| Seed | Random selection | Skill and diversity selection | Selected minus random |
-|---|---:|---:|---:|
-|42|55/64|53/64|-2 questions|
-|43|57/64|56/64|-1 question|
+The software builds mixed candidate pools from Alpaca and GSM8K, ranks every pool item for every query with seven ranking methods, scores the rankings with standard IR metrics, and publishes the results on a static website. The site also has a BM25 search engine that runs in the browser.
 
-**The skill heuristic did not beat random in either seed.** Two seeds and 64 adaptively reused development questions do not establish a general ranking advantage or equivalence. [Paired corrections, regressions and uncertainty](progress/VALUATION_RESULTS.md) are reported alongside failures.
+The project started as a full Granite fine tuning study on Modal. Accuracy got worse after each round of ranking and retraining, and there was no GPU cluster access, so the scope narrowed to the ranking step. The ranking step can be measured exactly, and it runs on a laptop CPU.
 
-Earlier serial development evaluation measured DeepSeek 63/64, untouched Granite 58/64, and the older BM25/random32/full120 adapters 52/64 each. These are separate historical experiments. DeepSeek used thinking / 4,096 output tokens; Granite used non-thinking / 512. Newer training evaluations use batching, the untouched batch 8 control also measured58/64, with 2 truncations and no training. Timings cannot be advertised as single-request speedups across these protocols.
+### Main findings
 
-![Token-matched development results](docs/figures/token-matched-accuracy.svg)
+1. On the length matched pool, which is the fair comparison, **BM25 is the best ranker** on three of the four metrics: P@10 0.706 vs 0.104 for random. LSA has a slightly higher MRR (0.874 vs 0.857). BM25 is also the most stable real ranker across seeds (P@10 std 0.006).
+2. **Document length is a hidden shortcut.** GSM8K problems have a median of about 42 words and Alpaca items about 11. On the standard pool, ranking by length alone gives P@10 0.467. That inflates LSA (P@10 0.888) and BM25 with no length normalization (b = 0 and k1 = 1.0 reach P@10 0.974 in the single seed sweep). Both advantages go away once Alpaca is length matched.
+3. **Removing stop words hurts** in every pool. Words like "how", "many", and "each" are the strongest signal that a text is a word problem.
+4. **Rocchio pseudo relevance feedback adds almost nothing**, and on the length matched pool it slightly hurts.
+5. **MinHash deduplication** caught 68 to 84 of the 100 planted near duplicates per seed, with zero false removals.
+6. Precision falls as the pool grows (BM25 P@10 from 0.92 at 1,600 items to 0.55 at 40,600, single seed), but BM25 stays far above random at every size.
+7. **No query leakage.** None of the 1,319 GSM8K test questions has an exact or near duplicate (MinHash Jaccard 0.7 or higher) in the GSM8K training set, so the queries never appear in the pool.
 
-The gradient study, larger human-reference expansion and final executors are in progress. **No final-test gain or public model API is claimed.** Read the dashboard for the latest measured stage; preparation, collection and student training have separate statuses.
+## 2. Experimental design
 
-## Data and model provenance
+| Part | Setting |
+|---|---|
+| Standard pool | 5,000 random Alpaca items, 500 GSM8K training problems, 100 near duplicates (a GSM8K problem with its first number increased by 1) |
+| Deduplicated pool | Standard pool after MinHash LSH (word 3 gram shingles, 128 permutations, Jaccard threshold 0.8) |
+| Length matched pool | 1,800 Alpaca items sampled so their word counts follow the GSM8K length distribution, plus 180 GSM8K problems and 36 near duplicates |
+| Queries | 300 GSM8K test questions per seed (never in the pool) |
+| Relevance | A pool item is relevant if it is a GSM8K problem or a near duplicate of one |
+| Metrics | Precision@10, MRR, nDCG@10, Recall@100 |
+| Repeats | 3 seeds (0, 1, 2); each seed draws a new pool and new queries |
 
-- Student: `ibm-granite/granite-4.2-3b`, revision `4e9c275e232f10211ec88644d106a1f6a1b60e06`; BF16, LoRA q/v projections,r8. This is adapter training, not full-parameter training.
-- Teacher: DeepSeek API V4-Pro, with returned model identifiers, request settings, original responses, usage and rejects preserved privately. An API alias is not an immutable weights revision.
-- Broad audit:40 Hugging Face repositories sampled across 37 declared collection families, 312 complete training rows. These are bounded samples, not 40 fully downloaded or trained datasets. [Pinned inventory](progress/HF_SOURCE_INVENTORY.json).
-- Separate math expansion: 600 prompts each from SVAMP, TemplateGSM and OpenMathInstruct-2 arithmetic augmentation. 1,800 teacher attempts yielded 1,565 reference-match eligible responses and 150,750 available answer tokens. Human, procedural and majority-vote references are distinguished.
-- Separate human-reference preparation: 2,048 new GSM teaching prompts and 200 disjoint training-split development questions, with prior-data/ancestry screening and exact arithmetic-annotation checks. All 2,048 teacher requests completed: 1,930 reference matches and 223,827 available answer tokens. The 200 questions never enter teaching requests. [Cohort](progress/HUMAN_MATH_COHORT.json) · [Teacher progress](progress/HUMAN_MATH_TEACHER.json).
+Rankers:
 
-Numeric agreement is not reasoning verification. The [reference audit](progress/SOURCE_REFERENCE_AUDIT.json) found one inconsistent SVAMP answer among 600 checked equations; that record was already rejected. All 24 gradient-selection targets passed the arithmetic/projection checks. Source ancestry detection and semantic validation remain incomplete. Official GSM8K test data stay sealed until final checkpoint and protocol freezing.
+| Ranker | Description |
+|---|---|
+| Random | Uniform random scores |
+| Length only | Longer items first; ignores the query (sanity check) |
+| TF IDF | scikit learn TF IDF with cosine similarity |
+| TF IDF + Rocchio | Pseudo relevance feedback: top 10 treated as relevant, q' = 1.0·q + 0.75·centroid |
+| LSA | TF IDF reduced to 200 dimensions with truncated SVD, cosine similarity |
+| BM25 | Okapi BM25, k1 = 1.5, b = 0.75 |
+| BM25 no stop words | Same, with scikit learn's English stop word list removed from queries and documents |
 
-## Controlled learning loop
+## 3. Results (mean ± std over 3 seeds)
 
-```mermaid
-flowchart LR
-    A[Training sources] --> B[Provenance, deduplication and reference checks]
-    B --> C[Bounded DeepSeek requests]
-    C --> D[One frozen eligible pool]
-    D --> E[Random, skill and gradient selection]
-    E --> F[Fresh Granite LoRA per arm]
-    F --> G[Matched development evaluation]
-    G -. New versioned experiment .-> B
-    G --> H[Freeze checkpoint and final protocol]
-    H --> I[One tracked official-test evaluation]
-    I --> J[Capped API trial]
+### Length matched pool (fair comparison)
+
+| Ranker | P@10 | MRR | nDCG@10 | Recall@100 |
+|---|---|---|---|---|
+| Random | 0.104 ± 0.005 | 0.258 ± 0.014 | 0.104 ± 0.007 | 0.050 ± 0.000 |
+| Length only | 0.033 ± 0.047 | 0.079 ± 0.029 | 0.022 ± 0.031 | 0.049 ± 0.010 |
+| TF IDF | 0.515 ± 0.026 | 0.752 ± 0.016 | 0.540 ± 0.021 | 0.163 ± 0.009 |
+| TF IDF + Rocchio | 0.510 ± 0.031 | 0.736 ± 0.018 | 0.540 ± 0.029 | 0.155 ± 0.014 |
+| LSA | 0.664 ± 0.033 | 0.874 ± 0.020 | 0.697 ± 0.032 | 0.195 ± 0.014 |
+| **BM25** | **0.706 ± 0.006** | 0.857 ± 0.006 | **0.720 ± 0.006** | **0.212 ± 0.005** |
+| BM25 no stop words | 0.554 ± 0.012 | 0.768 ± 0.020 | 0.576 ± 0.010 | 0.181 ± 0.004 |
+
+### Standard pool
+
+| Ranker | P@10 | MRR | nDCG@10 | Recall@100 |
+|---|---|---|---|---|
+| Random | 0.111 ± 0.003 | 0.272 ± 0.009 | 0.110 ± 0.004 | 0.018 ± 0.000 |
+| Length only | 0.467 ± 0.094 | 0.389 ± 0.079 | 0.417 ± 0.061 | 0.119 ± 0.004 |
+| TF IDF | 0.644 ± 0.017 | 0.811 ± 0.029 | 0.658 ± 0.022 | 0.096 ± 0.002 |
+| TF IDF + Rocchio | 0.652 ± 0.018 | 0.839 ± 0.026 | 0.681 ± 0.022 | 0.104 ± 0.002 |
+| LSA | 0.888 ± 0.010 | 0.950 ± 0.010 | 0.896 ± 0.010 | 0.131 ± 0.002 |
+| BM25 | 0.786 ± 0.010 | 0.898 ± 0.016 | 0.797 ± 0.013 | 0.115 ± 0.002 |
+| BM25 no stop words | 0.578 ± 0.009 | 0.787 ± 0.013 | 0.600 ± 0.011 | 0.079 ± 0.002 |
+
+### Deduplicated pool
+
+| Ranker | P@10 | MRR | nDCG@10 | Recall@100 |
+|---|---|---|---|---|
+| Random | 0.096 ± 0.004 | 0.234 ± 0.005 | 0.094 ± 0.003 | 0.018 ± 0.000 |
+| Length only | 0.467 ± 0.094 | 0.389 ± 0.079 | 0.414 ± 0.057 | 0.132 ± 0.006 |
+| TF IDF | 0.620 ± 0.022 | 0.816 ± 0.027 | 0.638 ± 0.024 | 0.104 ± 0.002 |
+| TF IDF + Rocchio | 0.624 ± 0.023 | 0.808 ± 0.029 | 0.644 ± 0.026 | 0.112 ± 0.002 |
+| LSA | 0.885 ± 0.007 | 0.955 ± 0.010 | 0.894 ± 0.009 | 0.149 ± 0.001 |
+| BM25 | 0.768 ± 0.013 | 0.898 ± 0.017 | 0.782 ± 0.015 | 0.126 ± 0.002 |
+| BM25 no stop words | 0.548 ± 0.012 | 0.787 ± 0.013 | 0.574 ± 0.013 | 0.085 ± 0.002 |
+
+Recall@100 has a ceiling because each pool has more than 100 relevant items (about 0.167 on the standard pool and 0.463 on the length matched pool).
+
+The website also has the BM25 k1 × b sweep (25 settings on two pools), the pool size scaling curve, and the error analysis.
+
+## 4. Implementation
+
+```
+granite-query/
+├── ranking_study/               CS 410 submission code (everything below)
+│   ├── granite_query/
+│   │   ├── ranking.py           all rankers + MinHash deduplication
+│   │   └── evaluation.py        data loading, pool construction, metrics
+│   ├── run_experiments.py       runs all five experiments, writes results/results.json
+│   ├── build_site.py            builds ../docs/index.html from the results
+│   ├── download_data.py         fetches GSM8K and Alpaca from GitHub
+│   ├── site/template.html       website template (charts and demo in plain JavaScript)
+│   ├── tests/                   unit tests (python -m unittest discover -s tests)
+│   └── results/                 results.json and the website demo pool
+├── docs/index.html              the project website (GitHub Pages and Vercel serve docs/)
+└── README_original.md           notes on the earlier fine tuning version of the project
 ```
 
-The new gradient method uses 24 separate human-reference selection targets, two warmup checkpoints and deterministic 1,024-dimensional CountSketch features. It is LESS-inspired, not a reproduction of LESS or a causal/Shapley value estimate. Selector warmup, feature collection, partial attempts and recovery overhead count toward cost. [Method and primary references](progress/NEXT_VALUATION_METHOD.md).
+Key implementation details:
 
-Random, skill and gradient arms use a common pool and exact answer-token budgets. The planned 32,768 / 65,536-token contrasts test selection; 131,072 tokens currently consume almost all available data and are labeled a near-all-data reference. Equal answer tokens do not imply equal input compute, examples or elapsed cost.
+1. **BM25** (`BM25Ranker`) is written from scratch on scipy sparse matrices. The document term weight matrix is computed once, and each query is a single sparse matrix product. The IDF formula matches the `rank_bm25` package, log((N − n + 0.5)/(n + 0.5)) with negative values floored at 0.25 × mean IDF. Scores were checked against `rank_bm25` and agree to within 1e−12. For 100 queries on the 5,600 item pool it runs about 30 times faster than the package, which keeps the 25 setting sweep cheap.
+2. **Rocchio feedback** (`RocchioRanker`) runs a first TF IDF retrieval, takes the centroid of the top 10 document vectors, forms q' = αq + β·centroid, normalizes it, and retrieves again.
+3. **LSA** (`LSARanker`) fits `TruncatedSVD` with 200 components on the pool's TF IDF matrix and ranks by cosine similarity in the reduced space.
+4. **MinHash dedup** (`minhash_dedup`) uses `datasketch` with word 3 gram shingles. It keeps the first item of each near duplicate group.
+5. **Length matched sampling** (`build_matched_pool`) puts GSM8K and Alpaca items into word count buckets (0 to 25, 25 to 35, 35 to 45, 45 to 55, 55 to 70, and over 70) and samples Alpaca to match GSM8K's share in each bucket.
+6. **Metrics** (`metrics_for`) use binary relevance. nDCG uses log2 discounts with the ideal DCG computed from the true number of relevant items.
+7. **Website**: `build_site.py` puts the results and a 3,360 item demo pool into one static HTML file. The charts are hand drawn SVG with hover tooltips, table views, and light and dark themes. The demo uses the same BM25 formula in JavaScript.
 
-## Run local checks without cloud spending
+## 5. Installation and usage
 
-Tested local environment: Python 3.12.15, Modal 1.6.3, Transformers 4.57.1, Matplotlib 3.10.7. From a new working directory on Windows:
+Requirements: Python 3.10 or newer. No GPU or API key is needed.
 
-```powershell
-git clone https://github.com/AviSrikumeran/granite-query.git
-Set-Location -LiteralPath '.\granite-query\granite_query'
-py -3.12 -m venv .venv-modal
-& '.\.venv-modal\Scripts\python.exe' -m pip install -r '.\cloud\requirements-research.txt'
-& '.\.venv-modal\Scripts\python.exe' '.\cloud\check_local.py'
+```bash
+git clone https://github.com/avisrikumeran/granite-query
+cd granite-query/ranking_study
+pip install -r requirements.txt
+python download_data.py        # about 27 MB into data/
+python run_experiments.py      # about 1 minute on a laptop CPU
+python build_site.py           # writes ../docs/index.html
 ```
 
-The checks use fixtures; they do not train models, send teacher requests or open the official test split. The top-level research dependencies are pinned; each cloud run also saves its installed package inventory. The older `requirements.lock.txt` belongs to the historical pilot environment.
+To run the unit tests (16 tests on synthetic data, no download needed):
 
-Paid work is explicit and guarded by [the supervisor runbook](granite_query/cloud/SUPERVISOR.md): inspect durable calls/locks first, reconcile provider usage, reserve each stage, and run at most one GPU job at a time. Total ceilings are $30 Modal and $20 DeepSeek including earlier consumption. Reservations, usage observations and conservative estimates are separate; local bookkeeping is not a provider-enforced cap. Credentials never belong in repository files or chat.
+```bash
+python -m unittest discover -s tests -v
+```
 
-## Autonomous progress and delivery
+One test also checks BM25 against the `rank_bm25` package. It is skipped if that package is not installed (`pip install rank_bm25`).
 
-A bounded local watcher now advances the approved grid through the reviewed study_runner, preserving call identities and budget gates. It starts new ticks for at most two hours per invocation, waiting45seconds between ticks and stops on actionable failures. The scheduled agent checks every five minutes to publish progress and handle later stages, preserving meaningful starts, completions, failures and fixes. `supervisor.py` itself only writes a local checkpoint; it does not launch paid work. The schedule and local teacher collectors require the computer/app to remain running; detached Modal jobs persist separately.
+Open `docs/index.html` (at the repository root) in a browser to see the site locally. GitHub Pages and Vercel both publish the `docs/` folder from the `main` branch.
 
-The public journal is append-only. Sanitized allowlisted snapshots are synchronized through GitHub, with `docs/status.json` last. The dashboard checks published snapshots every minute; publishing adds delay. Raw datasets, model responses, credentials, account details, runtime logs and weights are excluded. Public code and aggregate evidence support inspection of the method; exact stochastic-run replay requires the preserved private artifacts.
+Useful options for `run_experiments.py`:
 
-GitHub Pages currently serves the research dashboard. A scale-to-zero API is prepared with 20 permanent request permits and 24-hour expiry; it has not been deployed. Its nominal 512-output-token cap now matches evaluation; cold single-request serving and the 90-second time limit remain different conditions. Final checkpoint choice, independent evaluation and the public API/Vercel demonstration remain delivery work.
+| Flag | Default | Meaning |
+|---|---|---|
+| `--n_alpaca` | 5000 | Alpaca items in the standard pool |
+| `--n_gsm` | 500 | GSM8K problems in the standard pool |
+| `--n_dupes` | 100 | Planted near duplicates |
+| `--n_queries` | 300 | GSM8K test queries per seed |
+| `--n_matched_alpaca` | 1800 | Alpaca items in the length matched pool (at most about 1,900 fit the long length buckets) |
+| `--seeds` | 0 1 2 | Random seeds |
 
-[DeepSeek technical-report audit](progress/DEEPSEEK_REFERENCES.md) · [Granite, Mistral and Llama distillation references](progress/DISTILLATION_REFERENCES.md)
+You can also use the rankers directly:
+
+```python
+from granite_query.ranking import BM25Ranker
+pool = ["Tom has 3 apples and buys 5 more. How many apples does he have?",
+        "Write a haiku about autumn."]
+scores = BM25Ranker(pool).score("Sara has 4 pens and buys 2 more. How many pens?")
+```
+
+## 6. Limitations and future work
+
+1. Relevance comes from which dataset an item belongs to, so a real math question inside Alpaca counts as not relevant.
+2. The evaluation measures retrieval quality, not downstream model quality. The next step is to fine tune Granite on BM25 ranked subsets and random subsets of equal size and compare GSM8K accuracy.
+3. All rankers are lexical or linear. A neural embedding ranker, compared on the length matched pool, is the natural next baseline.
+
+## 7. Team contribution
+
+This was a solo project. Avinash Sri-kumeran designed the experiments, implemented the rankers, evaluation, and website, ran all experiments, and wrote the documentation.
+
+## Data and licenses
+
+GSM8K (MIT license) comes from https://github.com/openai/grade-school-math. Stanford Alpaca (CC BY NC 4.0) comes from https://github.com/tatsu-lab/stanford_alpaca. The data is downloaded at run time and is not stored in this repository, except for the small demo pool used by the website.
+
+## Earlier version of this project
+
+The rest of this repository (`granite_query/` at the root, `api/`, `server/`, and the other pages in `docs/`) belongs to the original fine tuning version of Granite Query, which continues as a separate project. See `README_original.md`. The earlier homepage is saved as `docs/original.html`, and the full earlier site is on the `original-site-backup` branch.
