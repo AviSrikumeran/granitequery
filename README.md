@@ -138,7 +138,7 @@ To run the unit tests (16 tests on synthetic data, no download needed):
 python -m unittest discover -s tests -v
 ```
 
-One test also checks BM25 against the `rank_bm25` package. It is skipped if that package is not installed (`pip install rank_bm25`).
+One test also checks BM25 against the `rank_bm25` reference package, which is installed by requirements.txt.
 
 Open `docs/index.html` (at the repository root) in a browser to see the site locally. GitHub Pages and Vercel both publish the `docs/` folder from the `main` branch.
 
